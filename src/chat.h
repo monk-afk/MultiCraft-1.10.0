@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef CHAT_HEADER
+#define CHAT_HEADER
 
 #include <string>
 #include <vector>
@@ -25,34 +26,29 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "irrlichttypes.h"
 #include "util/enriched_string.h"
-#include "settings.h"
 
 // Chat console related classes
 
 struct ChatLine
 {
 	// age in seconds
-	f32 age = 0.0f;
+	f32 age;
 	// name of sending player, or empty if sent by server
 	EnrichedString name;
 	// message text
 	EnrichedString text;
-	// Line index in ChatLine buffer
-	int line_index;
 
-	ChatLine(const std::wstring &a_name, const std::wstring &a_text,
-			int a_line_index):
+	ChatLine(const std::wstring &a_name, const std::wstring &a_text):
+		age(0.0),
 		name(a_name),
-		text(a_text),
-		line_index(a_line_index)
+		text(a_text)
 	{
 	}
 
-	ChatLine(const EnrichedString &a_name, const EnrichedString &a_text,
-			int a_line_index):
+	ChatLine(const EnrichedString &a_name, const EnrichedString &a_text):
+		age(0.0),
 		name(a_name),
-		text(a_text),
-		line_index(a_line_index)
+		text(a_text)
 	{
 	}
 };
@@ -73,19 +69,17 @@ struct ChatFormattedLine
 	std::vector<ChatFormattedFragment> fragments;
 	// true if first line of one formatted ChatLine
 	bool first;
-	// Line index in ChatLine buffer
-	int line_index;
 };
 
 class ChatBuffer
 {
 public:
 	ChatBuffer(u32 scrollback);
-	~ChatBuffer() = default;
+	~ChatBuffer();
 
 	// Append chat line
 	// Removes oldest chat line if scrollback size is reached
-	void addLine(const std::wstring &name, const std::wstring &text);
+	void addLine(std::wstring name, std::wstring text);
 
 	// Remove all chat lines
 	void clear();
@@ -102,6 +96,8 @@ public:
 	// Delete lines older than maxAge.
 	void deleteByAge(f32 maxAge);
 
+	// Get number of columns, 0 if reformat has not been called yet.
+	u32 getColumns() const;
 	// Get number of rows, 0 if reformat has not been called yet.
 	u32 getRows() const;
 	// Update console size and reformat all formatted lines.
@@ -119,27 +115,13 @@ public:
 	// Scroll to top of buffer (oldest)
 	void scrollTop();
 
-	s32 getScrollPos() { return m_scroll; }
-	u32 getColsCount() { return m_cols; }
-
-	// Functions for keeping track of whether the lines were modified by any
-	// preceding operations
-	// If they were not changed, getLineCount() and getLine() output the same as
-	// before
-	bool getLinesModified() const { return m_lines_modified; }
-	void resetLinesModified() { m_lines_modified = false; }
-
-	u32 getDelFormatted() const { return m_del_formatted; }
-	void resetDelFormatted() { m_del_formatted = 0; }
-
 	// Format a chat line for the given number of columns.
 	// Appends the formatted lines to the destination array and
 	// returns the number of formatted lines.
 	u32 formatChatLine(const ChatLine& line, u32 cols,
 			std::vector<ChatFormattedLine>& destination) const;
 
-	void resize(u32 scrollback);
-
+protected:
 	s32 getTopScrollPos() const;
 	s32 getBottomScrollPos() const;
 
@@ -150,39 +132,29 @@ private:
 	std::vector<ChatLine> m_unformatted;
 
 	// Number of character columns in console
-	u32 m_cols = 0;
+	u32 m_cols;
 	// Number of character rows in console
-	u32 m_rows = 0;
+	u32 m_rows;
 	// Scroll position (console's top line index into m_formatted)
-	s32 m_scroll = 0;
+	s32 m_scroll;
 	// Array of formatted lines
 	std::vector<ChatFormattedLine> m_formatted;
 	// Empty formatted line, for error returns
 	ChatFormattedLine m_empty_formatted_line;
-
-	// Whether the lines were modified since last markLinesUnchanged()
-	// Is always set to true when m_unformatted is modified, because that's what
-	// determines the output of getLineCount() and getLine()
-	bool m_lines_modified = true;
-
-	// How many formatted lines have been deleted
-	u32 m_del_formatted = 0;
-
-	int m_current_line_index = 0;
 };
 
 class ChatPrompt
 {
 public:
 	ChatPrompt(const std::wstring &prompt, u32 history_limit);
-	~ChatPrompt() = default;
+	~ChatPrompt();
 
 	// Input character or string
 	void input(wchar_t ch);
 	void input(const std::wstring &str);
 
 	// Add a string to the history
-	void addToHistory(const std::wstring &line);
+	void addToHistory(std::wstring line);
 
 	// Get current line
 	std::wstring getLine() const { return m_line; }
@@ -194,7 +166,7 @@ public:
 	void clear();
 
 	// Replace the current line with the given text
-	std::wstring replace(const std::wstring &line);
+	std::wstring replace(std::wstring line);
 
 	// Select previous command from history
 	void historyPrev();
@@ -210,8 +182,6 @@ public:
 	std::wstring getVisiblePortion() const;
 	// Get cursor position (relative to visible portion). -1 if invalid
 	s32 getVisibleCursorPosition() const;
-	// Get view position (absolute value)
-	s32 getViewPosition() const { return m_view; }
 	// Get length of cursor selection
 	s32 getCursorLength() const { return m_cursor_len; }
 
@@ -247,14 +217,6 @@ public:
 	//     deletes the word to the left of the cursor.
 	void cursorOperation(CursorOp op, CursorOpDir dir, CursorOpScope scope);
 
-	void setCursorPos(int cursor_pos);
-	void setViewPosition(int view);
-
-	// Functions for keeping track of whether the line was modified by any
-	// preceding operations
-	bool getLineModified() const { return m_line_modified; }
-	void resetLineModified() { m_line_modified = false; }
-
 protected:
 	// set m_view to ensure that 0 <= m_view <= m_cursor < m_view + m_cols
 	// if line can be fully shown, set m_view to zero
@@ -263,42 +225,39 @@ protected:
 
 private:
 	// Prompt prefix
-	std::wstring m_prompt = L"";
+	std::wstring m_prompt;
 	// Currently edited line
-	std::wstring m_line = L"";
+	std::wstring m_line;
 	// History buffer
 	std::vector<std::wstring> m_history;
 	// History index (0 <= m_history_index <= m_history.size())
-	u32 m_history_index = 0;
+	u32 m_history_index;
 	// Maximum number of history entries
 	u32 m_history_limit;
 
 	// Number of columns excluding columns reserved for the prompt
-	s32 m_cols = 0;
+	s32 m_cols;
 	// Start of visible portion (index into m_line)
-	s32 m_view = 0;
+	s32 m_view;
 	// Cursor (index into m_line)
-	s32 m_cursor = 0;
+	s32 m_cursor;
 	// Cursor length (length of selected portion of line)
-	s32 m_cursor_len = 0;
+	s32 m_cursor_len;
 
 	// Last nick completion start (index into m_line)
-	s32 m_nick_completion_start = 0;
+	s32 m_nick_completion_start;
 	// Last nick completion start (index into m_line)
-	s32 m_nick_completion_end = 0;
-
-	// True if line was modified
-	bool m_line_modified = true;
+	s32 m_nick_completion_end;
 };
 
 class ChatBackend
 {
 public:
 	ChatBackend();
-	~ChatBackend() = default;
+	~ChatBackend();
 
 	// Add chat message
-	void addMessage(const std::wstring &name, std::wstring text);
+	void addMessage(std::wstring name, std::wstring text);
 	// Parse and add unparsed chat message
 	void addUnparsedMessage(std::wstring line);
 
@@ -307,7 +266,7 @@ public:
 	// Get the recent messages buffer
 	ChatBuffer& getRecentBuffer();
 	// Concatenate all recent messages
-	EnrichedString getRecentChat() const;
+	EnrichedString getRecentChat();
 	// Get the console prompt
 	ChatPrompt& getPrompt();
 
@@ -325,11 +284,11 @@ public:
 	void scrollPageDown();
 	void scrollPageUp();
 
-	// Resize recent buffer based on settings
-	void applySettings();
-
 private:
 	ChatBuffer m_console_buffer;
 	ChatBuffer m_recent_buffer;
 	ChatPrompt m_prompt;
 };
+
+#endif
+

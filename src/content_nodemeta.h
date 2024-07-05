@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef CONTENT_NODEMETA_HEADER
+#define CONTENT_NODEMETA_HEADER
 
 #include <iostream>
 
@@ -32,3 +33,8 @@ class IItemDefManager;
 void content_nodemeta_deserialize_legacy(std::istream &is,
 		NodeMetadataList *meta, NodeTimerList *timers,
 		IItemDefManager *item_def_mgr);
+
+void content_nodemeta_serialize_legacy(std::ostream &os, NodeMetadataList *meta);
+
+#endif
+

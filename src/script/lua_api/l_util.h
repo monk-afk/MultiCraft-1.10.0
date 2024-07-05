@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef L_UTIL_H_
+#define L_UTIL_H_
 
 #include "lua_api/l_base.h"
 
@@ -37,7 +38,7 @@ private:
 
 	// log([level,] text)
 	// Writes a line to the logger.
-	// The one-argument version logs to LL_NONE.
+	// The one-argument version logs to infostream.
 	// The two-argument version accepts a log level.
 	static int l_log(lua_State *L);
 
@@ -67,9 +68,6 @@ private:
 
 	// get_builtin_path()
 	static int l_get_builtin_path(lua_State *L);
-
-	// get_user_path()
-	static int l_get_user_path(lua_State *L);
 
 	// compress(data, method, ...)
 	static int l_compress(lua_State *L);
@@ -101,21 +99,12 @@ private:
 	// sha1(string, raw)
 	static int l_sha1(lua_State *L);
 
-#ifndef SERVER
-	// upgrade(string)
-	static int l_upgrade(lua_State *L);
-
-	// get_secret_key(string)
-	static int l_get_secret_key(lua_State *L);
-
-	static int l_get_screen_info(lua_State *L);
-#endif
-
 public:
 	static void Initialize(lua_State *L, int top);
 	static void InitializeAsync(lua_State *L, int top);
 	static void InitializeClient(lua_State *L, int top);
-	static void InitializeMainMenu(lua_State *L, int top);
 
 	static void InitializeAsync(AsyncEngine &engine);
 };
+
+#endif /* L_UTIL_H_ */

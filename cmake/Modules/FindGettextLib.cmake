@@ -50,29 +50,25 @@ if(WIN32)
 		NAMES libiconv2.dll
 		PATHS "${CUSTOM_GETTEXT_PATH}/bin" "${CUSTOM_GETTEXT_PATH}/lib"
 		DOC "gettext *iconv*.lib")
-	set(GETTEXT_REQUIRED_VARS ${GETTEXT_REQUIRED_VARS} GETTEXT_LIBRARY)
+	set(GETTEXT_REQUIRED_VARS ${GETTEXT_REQUIRED_VARS} GETTEXT_DLL GETTEXT_ICONV_DLL)
 endif(WIN32)
 
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(GettextLib DEFAULT_MSG ${GETTEXT_REQUIRED_VARS})
+find_package_handle_standard_args(GetText DEFAULT_MSG ${GETTEXT_REQUIRED_VARS})
 
 
-if(GETTEXTLIB_FOUND)
+if(GETTEXT_FOUND)
 	# BSD variants require special linkage as they don't use glibc
-	if(${CMAKE_SYSTEM_NAME} MATCHES "BSD|DragonFly")
+	if(${CMAKE_SYSTEM_NAME} MATCHES "BSD")
 		set(GETTEXT_LIBRARY "intl")
 	endif()
 
 	set(GETTEXT_PO_PATH ${CMAKE_SOURCE_DIR}/po)
-	if(WIN32)
-		set(GETTEXT_MO_BUILD_PATH ${CMAKE_SOURCE_DIR}/locale/<locale>/LC_MESSAGES)
-	else()
-		set(GETTEXT_MO_BUILD_PATH ${CMAKE_BINARY_DIR}/locale/<locale>/LC_MESSAGES)
-	endif()
+	set(GETTEXT_MO_BUILD_PATH ${CMAKE_BINARY_DIR}/locale/<locale>/LC_MESSAGES)
 	set(GETTEXT_MO_DEST_PATH ${LOCALEDIR}/<locale>/LC_MESSAGES)
 	file(GLOB GETTEXT_AVAILABLE_LOCALES RELATIVE ${GETTEXT_PO_PATH} "${GETTEXT_PO_PATH}/*")
-	list(REMOVE_ITEM GETTEXT_AVAILABLE_LOCALES minetest.pot)
+	list(REMOVE_ITEM GETTEXT_AVAILABLE_LOCALES MultiCraft.pot)
 	list(REMOVE_ITEM GETTEXT_AVAILABLE_LOCALES timestamp)
 	macro(SET_MO_PATHS _buildvar _destvar _locale)
 		string(REPLACE "<locale>" ${_locale} ${_buildvar} ${GETTEXT_MO_BUILD_PATH})

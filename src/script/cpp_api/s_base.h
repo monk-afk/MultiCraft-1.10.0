@@ -17,26 +17,22 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef S_BASE_H_
+#define S_BASE_H_
 
 #include <iostream>
 #include <string>
-#include <thread>
-#include <mutex>
-#include <unordered_map>
-#include "common/helper.h"
-#include "util/basic_macros.h"
 
 extern "C" {
 #include <lua.h>
-#include <lualib.h>
 }
 
 #include "irrlichttypes.h"
+#include "threads.h"
+#include "threading/mutex.h"
+#include "threading/mutex_auto_lock.h"
 #include "common/c_types.h"
 #include "common/c_internal.h"
-#include "debug.h"
-#include "config.h"
 
 #define SCRIPTAPI_LOCK_DEBUG
 #define SCRIPTAPI_DEBUG
@@ -45,25 +41,18 @@ extern "C" {
 // use that name to bypass security!
 #define BUILTIN_MOD_NAME "*builtin*"
 
-#define PCALL_RES(RES) {                    \
+#define PCALL_RES(RES) do {                 \
 	int result_ = (RES);                    \
 	if (result_ != 0) {                     \
 		scriptError(result_, __FUNCTION__); \
 	}                                       \
-}
+} while (0)
 
 #define runCallbacks(nargs, mode) \
 	runCallbacksRaw((nargs), (mode), __FUNCTION__)
 
 #define setOriginFromTable(index) \
 	setOriginFromTableRaw(index, __FUNCTION__)
-
-enum class ScriptingType: u8 {
-	Async,
-	Client,
-	MainMenu,
-	Server
-};
 
 class Server;
 #ifndef SERVER
@@ -73,26 +62,15 @@ class IGameDef;
 class Environment;
 class GUIEngine;
 class ServerActiveObject;
-struct PlayerHPChangeReason;
 
-class ScriptApiBase : protected LuaHelper {
+class ScriptApiBase {
 public:
-	ScriptApiBase(ScriptingType type);
-	// fake constructor to allow script API classes (e.g ScriptApiEnv) to virtually inherit from this one.
-	ScriptApiBase()
-	{
-		FATAL_ERROR("ScriptApiBase created without ScriptingType!");
-	}
+	ScriptApiBase();
 	virtual ~ScriptApiBase();
-	DISABLE_CLASS_COPY(ScriptApiBase);
 
 	// These throw a ModError on failure
 	void loadMod(const std::string &script_path, const std::string &mod_name);
 	void loadScript(const std::string &script_path);
-
-#ifndef SERVER
-	void loadModFromMemory(const std::string &mod_name);
-#endif
 
 	void runCallbacksRaw(int nargs,
 		RunCallbacksMode mode, const char *fxn);
@@ -103,7 +81,6 @@ public:
 
 	IGameDef *getGameDef() { return m_gamedef; }
 	Server* getServer();
-	ScriptingType getType() { return m_type; }
 #ifndef SERVER
 	Client* getClient();
 #endif
@@ -111,8 +88,6 @@ public:
 	std::string getOrigin() { return m_last_run_mod; }
 	void setOriginDirect(const char *origin);
 	void setOriginFromTableRaw(int index, const char *fxn);
-
-	void clientOpenLibs(lua_State *L);
 
 protected:
 	friend class LuaABM;
@@ -136,32 +111,27 @@ protected:
 	Environment* getEnv() { return m_environment; }
 	void setEnv(Environment* env) { m_environment = env; }
 
-#ifndef SERVER
 	GUIEngine* getGuiEngine() { return m_guiengine; }
 	void setGuiEngine(GUIEngine* guiengine) { m_guiengine = guiengine; }
-#endif
 
 	void objectrefGetOrCreate(lua_State *L, ServerActiveObject *cobj);
 
-	void pushPlayerHPChangeReason(lua_State *L, const PlayerHPChangeReason& reason);
-
-	std::recursive_mutex m_luastackmutex;
+	RecursiveMutex  m_luastackmutex;
 	std::string     m_last_run_mod;
-	bool            m_secure = false;
+	bool            m_secure;
 #ifdef SCRIPTAPI_LOCK_DEBUG
-	int             m_lock_recursion_count{};
-	std::thread::id m_owning_thread;
+	int             m_lock_recursion_count;
+	threadid_t      m_owning_thread;
 #endif
 
 private:
 	static int luaPanic(lua_State *L);
 
-	lua_State      *m_luastack = nullptr;
+	lua_State*      m_luastack;
 
-	IGameDef       *m_gamedef = nullptr;
-	Environment    *m_environment = nullptr;
-#ifndef SERVER
-	GUIEngine      *m_guiengine = nullptr;
-#endif
-	ScriptingType  m_type;
+	IGameDef*       m_gamedef;
+	Environment*    m_environment;
+	GUIEngine*      m_guiengine;
 };
+
+#endif /* S_BASE_H_ */

@@ -146,7 +146,7 @@ function filterlist.get_raw_index(self,listindex)
 
 		for i,v in ipairs(self.m_raw_list) do
 
-			if self.m_compare_fct(v,entry) then
+			if self.m_compare_fct(v, entry) then
 				return i
 			end
 		end
@@ -165,7 +165,7 @@ function filterlist.get_current_index(self,listindex)
 
 		for i,v in ipairs(self.m_processed_list) do
 
-			if self.m_compare_fct(v,entry) then
+			if self.m_compare_fct(v, entry) then
 				return i
 			end
 		end
@@ -186,9 +186,9 @@ function filterlist.process(self)
 
 	self.m_processed_list = {}
 
-	for k,v in pairs(self.m_raw_list) do
+	for _, v in pairs(self.m_raw_list) do
 		if self.m_filtercriteria == nil or
-			self.m_filter_fct(v,self.m_filtercriteria) then
+			self.m_filter_fct(v, self.m_filtercriteria) then
 			self.m_processed_list[#self.m_processed_list + 1] = v
 		end
 	end
@@ -215,8 +215,8 @@ end
 
 --------------------------------------------------------------------------------
 function filterlist.uid_exists_raw(self,uid)
-	for i,v in ipairs(self.m_raw_list) do
-		if self.m_uid_match_fct(v,uid) then
+	for _, v in ipairs(self.m_raw_list) do
+		if self.m_uid_match_fct(v, uid) then
 			return true
 		end
 	end
@@ -228,7 +228,7 @@ function filterlist.raw_index_by_uid(self, uid)
 	local elementcount = 0
 	local elementidx = 0
 	for i,v in ipairs(self.m_raw_list) do
-		if self.m_uid_match_fct(v,uid) then
+		if self.m_uid_match_fct(v, uid) then
 			elementcount = elementcount +1
 			elementidx = i
 		end
@@ -267,7 +267,6 @@ end
 
 --------------------------------------------------------------------------------
 function sort_worlds_alphabetic(self)
-
 	table.sort(self.m_processed_list, function(a, b)
 		--fixes issue #857 (crash due to sorting nil in worldlist)
 		if a == nil or b == nil then
@@ -284,14 +283,13 @@ end
 
 --------------------------------------------------------------------------------
 function sort_mod_list(self)
-
 	table.sort(self.m_processed_list, function(a, b)
 		-- Show game mods at bottom
-		if a.type ~= b.type or a.loc ~= b.loc then
-			if b.type == "game" then
-				return a.loc ~= "game"
+		if a.typ ~= b.typ then
+			if b.typ == "game" then
+				return a.typ ~= "game_mod"
 			end
-			return b.loc == "game"
+			return b.typ == "game_mod"
 		end
 		-- If in same or no modpack, sort by name
 		if a.modpack == b.modpack then

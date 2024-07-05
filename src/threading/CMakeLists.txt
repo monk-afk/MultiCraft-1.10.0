@@ -1,8 +1,7 @@
 set(JTHREAD_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/event.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/mutex.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/thread.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/semaphore.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/sdl_semaphore.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/sdl_thread.cpp
 	PARENT_SCOPE)
 

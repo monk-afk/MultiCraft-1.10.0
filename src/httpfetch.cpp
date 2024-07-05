@@ -17,15 +17,14 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "httpfetch.h"
+#include "socket.h" // for select()
 #include "porting.h" // for sleep_ms(), get_sysinfo(), secure_rand_fill_buf()
+#include "httpfetch.h"
 #include <iostream>
 #include <sstream>
 #include <list>
 #include <map>
-#include <cerrno>
-#include <mutex>
-#include "network/socket.h" // for select()
+#include <errno.h>
 #include "threading/event.h"
 #include "config.h"
 #include "exceptions.h"
@@ -37,13 +36,17 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "settings.h"
 #include "noise.h"
 
-std::mutex g_httpfetch_mutex;
+Mutex g_httpfetch_mutex;
 std::map<unsigned long, std::queue<HTTPFetchResult> > g_httpfetch_results;
 PcgRandom g_callerid_randomness;
 
 HTTPFetchRequest::HTTPFetchRequest() :
+	url(""),
+	caller(HTTPFETCH_DISCARD),
+	request_id(0),
 	timeout(g_settings->getS32("curl_timeout")),
 	connect_timeout(timeout),
+	multipart(false),
 	useragent(std::string(PROJECT_NAME_C "/") + g_version_hash + " (" + porting::get_sysinfo() + ")")
 {
 }
@@ -170,8 +173,7 @@ class CurlHandlePool
 	std::list<CURL*> handles;
 
 public:
-	CurlHandlePool() = default;
-
+	CurlHandlePool() {}
 	~CurlHandlePool()
 	{
 		for (std::list<CURL*>::iterator it = handles.begin();
@@ -215,22 +217,26 @@ public:
 
 private:
 	CurlHandlePool *pool;
-	CURL *curl = nullptr;
-	CURLM *multi = nullptr;
+	CURL *curl;
+	CURLM *multi;
 	HTTPFetchRequest request;
 	HTTPFetchResult result;
 	std::ostringstream oss;
-	struct curl_slist *http_header = nullptr;
-	curl_mime *multipart_mime = nullptr;
+	struct curl_slist *http_header;
+	curl_httppost *post;
 };
 
 
 HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 		CurlHandlePool *pool_):
 	pool(pool_),
+	curl(NULL),
+	multi(NULL),
 	request(request_),
 	result(request_),
-	oss(std::ios::binary)
+	oss(std::ios::binary),
+	http_header(NULL),
+	post(NULL)
 {
 	curl = pool->alloc();
 	if (curl == NULL) {
@@ -241,7 +247,7 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
-	curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3);
+	curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 1);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "gzip");
 
 	std::string bind_address = g_settings->get("bind_address");
@@ -249,19 +255,10 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 		curl_easy_setopt(curl, CURLOPT_INTERFACE, bind_address.c_str());
 	}
 
-	if (!g_settings->getBool("enable_ipv6")) {
-		curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-	}
-
+#if LIBCURL_VERSION_NUM >= 0x071304
 	// Restrict protocols so that curl vulnerabilities in
 	// other protocols don't affect us.
-#if LIBCURL_VERSION_NUM >= 0x075500
-	// These settings were introduced in curl 7.85.0.
-	const char *protocols = "HTTP,HTTPS,FTP,FTPS";
-	curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, protocols);
-	curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, protocols);
-#elif LIBCURL_VERSION_NUM >= 0x071304
-	// These settings were introduced in curl 7.19.4, and later deprecated.
+	// These settings were introduced in curl 7.19.4.
 	long protocols =
 		CURLPROTO_HTTP |
 		CURLPROTO_HTTPS |
@@ -279,7 +276,7 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
 			request.connect_timeout);
 
-	if (!request.useragent.empty())
+	if (request.useragent != "")
 		curl_easy_setopt(curl, CURLOPT_USERAGENT, request.useragent.c_str());
 
 	// Set up a write callback that writes to the
@@ -295,55 +292,51 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &oss);
 	}
 
-	// Set data from fields or raw_data
-	if (request.multipart) {
-		multipart_mime = curl_mime_init(curl);
-		for (auto &it : request.fields) {
-			curl_mimepart *part = curl_mime_addpart(multipart_mime);
-			curl_mime_name(part, it.first.c_str());
-			curl_mime_data(part, it.second.c_str(), it.second.size());
+	// Set POST (or GET) data
+	if (request.post_fields.empty() && request.post_data.empty()) {
+		curl_easy_setopt(curl, CURLOPT_HTTPGET, 1);
+	} else if (request.multipart) {
+		curl_httppost *last = NULL;
+		for (StringMap::iterator it = request.post_fields.begin();
+				it != request.post_fields.end(); ++it) {
+			curl_formadd(&post, &last,
+					CURLFORM_NAMELENGTH, it->first.size(),
+					CURLFORM_PTRNAME, it->first.c_str(),
+					CURLFORM_CONTENTSLENGTH, it->second.size(),
+					CURLFORM_PTRCONTENTS, it->second.c_str(),
+					CURLFORM_END);
 		}
-		curl_easy_setopt(curl, CURLOPT_MIMEPOST, multipart_mime);
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
+		// request.post_fields must now *never* be
+		// modified until CURLOPT_HTTPPOST is cleared
+	} else if (request.post_data.empty()) {
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+		std::string str;
+		for (StringMap::iterator it = request.post_fields.begin();
+				it != request.post_fields.end(); ++it) {
+			if (str != "")
+				str += "&";
+			str += urlencode(it->first);
+			str += "=";
+			str += urlencode(it->second);
+		}
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
+				str.size());
+		curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS,
+				str.c_str());
 	} else {
-		switch (request.method) {
-		case HTTP_GET:
-			curl_easy_setopt(curl, CURLOPT_HTTPGET, 1);
-			break;
-		case HTTP_POST:
-			curl_easy_setopt(curl, CURLOPT_POST, 1);
-			break;
-		case HTTP_PUT:
-			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-			break;
-		case HTTP_DELETE:
-			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-			break;
-		}
-		if (request.method != HTTP_GET) {
-			if (!request.raw_data.empty()) {
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
-						request.raw_data.size());
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
-						request.raw_data.c_str());
-			} else if (!request.fields.empty()) {
-				std::string str;
-				for (auto &field : request.fields) {
-					if (!str.empty())
-						str += "&";
-					str += urlencode(field.first);
-					str += "=";
-					str += urlencode(field.second);
-				}
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
-						str.size());
-				curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS,
-						str.c_str());
-			}
-		}
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
+				request.post_data.size());
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
+				request.post_data.c_str());
+		// request.post_data must now *never* be
+		// modified until CURLOPT_POSTFIELDS is cleared
 	}
 	// Set additional HTTP headers
-	for (const std::string &extra_header : request.extra_headers) {
-		http_header = curl_slist_append(http_header, extra_header.c_str());
+	for (std::vector<std::string>::iterator it = request.extra_headers.begin();
+			it != request.extra_headers.end(); ++it) {
+		http_header = curl_slist_append(http_header, it->c_str());
 	}
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, http_header);
 
@@ -389,7 +382,7 @@ const HTTPFetchResult * HTTPFetchOngoing::complete(CURLcode res)
 	}
 
 	if (res != CURLE_OK) {
-		warningstream << request.url << " not found ("
+		infostream << request.url << " not found ("
 			<< curl_easy_strerror(res) << ")"
 			<< " (response code " << result.response_code << ")"
 			<< std::endl;
@@ -418,9 +411,9 @@ HTTPFetchOngoing::~HTTPFetchOngoing()
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, NULL);
 		curl_slist_free_all(http_header);
 	}
-	if (multipart_mime) {
-		curl_easy_setopt(curl, CURLOPT_MIMEPOST, nullptr);
-		curl_mime_free(multipart_mime);
+	if (post) {
+		curl_easy_setopt(curl, CURLOPT_HTTPPOST, NULL);
+		curl_formfree(post);
 	}
 
 	// Store the cURL handle for reuse
@@ -654,6 +647,8 @@ protected:
 
 	void *run()
 	{
+		DSTACK(FUNCTION_NAME);
+
 		CurlHandlePool pool;
 
 		m_multi = curl_multi_init();
@@ -717,8 +712,8 @@ protected:
 		}
 
 		// Call curl_multi_remove_handle and cleanup easy handles
-		for (HTTPFetchOngoing *i : m_all_ongoing) {
-			delete i;
+		for (size_t i = 0; i < m_all_ongoing.size(); ++i) {
+			delete m_all_ongoing[i];
 		}
 		m_all_ongoing.clear();
 

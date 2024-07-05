@@ -19,14 +19,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "staticobject.h"
 #include "util/serialize.h"
-#include "server/serveractiveobject.h"
-
-StaticObject::StaticObject(const ServerActiveObject *s_obj, const v3f &pos_):
-	type(s_obj->getType()),
-	pos(pos_)
-{
-	s_obj->getStaticData(&data);
-}
+#include "log.h"
 
 void StaticObject::serialize(std::ostream &os)
 {
@@ -35,9 +28,8 @@ void StaticObject::serialize(std::ostream &os)
 	// pos
 	writeV3F1000(os, pos);
 	// data
-	os<<serializeString16(data);
+	os<<serializeString(data);
 }
-
 void StaticObject::deSerialize(std::istream &is, u8 version)
 {
 	// type
@@ -45,34 +37,11 @@ void StaticObject::deSerialize(std::istream &is, u8 version)
 	// pos
 	pos = readV3F1000(is);
 	// data
-	data = deSerializeString16(is);
+	data = deSerializeString(is);
 }
 
 void StaticObjectList::serialize(std::ostream &os)
 {
-	// Check for problems first
-	auto problematic = [] (StaticObject &obj) -> bool {
-		if (obj.data.size() > U16_MAX) {
-			errorstream << "StaticObjectList::serialize(): "
-				"object has excessive static data (" << obj.data.size() <<
-				"), deleting it." << std::endl;
-			return true;
-		}
-		return false;
-	};
-	for (auto it = m_stored.begin(); it != m_stored.end(); ) {
-		if (problematic(*it))
-			it = m_stored.erase(it);
-		else
-			it++;
-	}
-	for (auto it = m_active.begin(); it != m_active.end(); ) {
-		if (problematic(it->second))
-			it = m_active.erase(it);
-		else
-			it++;
-	}
-
 	// version
 	u8 version = 0;
 	writeU8(os, version);
@@ -90,26 +59,22 @@ void StaticObjectList::serialize(std::ostream &os)
 	}
 	writeU16(os, count);
 
-	for (StaticObject &s_obj : m_stored) {
+	for(std::vector<StaticObject>::iterator
+			i = m_stored.begin();
+			i != m_stored.end(); ++i) {
+		StaticObject &s_obj = *i;
 		s_obj.serialize(os);
 	}
-
-	for (auto &i : m_active) {
-		StaticObject s_obj = i.second;
+	for(std::map<u16, StaticObject>::iterator
+			i = m_active.begin();
+			i != m_active.end(); ++i)
+	{
+		StaticObject s_obj = i->second;
 		s_obj.serialize(os);
 	}
 }
 void StaticObjectList::deSerialize(std::istream &is)
 {
-	if (m_active.size()) {
-		errorstream << "StaticObjectList::deSerialize(): "
-			<< "deserializing objects while " << m_active.size()
-			<< " active objects already exist (not cleared). "
-			<< m_stored.size() << " stored objects _were_ cleared"
-			<< std::endl;
-	}
-	m_stored.clear();
-
 	// version
 	u8 version = readU8(is);
 	// count

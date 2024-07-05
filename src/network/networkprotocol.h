@@ -17,8 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
-
+#ifndef NETWORKPROTOCOL_HEADER
+#define NETWORKPROTOCOL_HEADER
 #include "util/string.h"
 
 /*
@@ -70,8 +70,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 	PROTOCOL_VERSION 14:
 		Added transfer of player pressed keys to the server
 		Added new messages for mesh and bone animation, as well as attachments
-		AO_CMD_SET_ANIMATION
-		AO_CMD_SET_BONE_POSITION
+		GENERIC_CMD_SET_ANIMATION
+		GENERIC_CMD_SET_BONE_POSITION
 		GENERIC_CMD_SET_ATTACHMENT
 	PROTOCOL_VERSION 15:
 		Serialization format changes
@@ -87,7 +87,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 		damageGroups added to ToolCapabilities
 		sound_place added to ItemDefinition
 	PROTOCOL_VERSION 19:
-		AO_CMD_SET_PHYSICS_OVERRIDE
+		GENERIC_CMD_SET_PHYSICS_OVERRIDE
 	PROTOCOL_VERSION 20:
 		TOCLIENT_HUDADD
 		TOCLIENT_HUDRM
@@ -131,7 +131,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 		Add TOCLIENT_HELLO for presenting server to client after client
 			presentation
 		Add TOCLIENT_AUTH_ACCEPT to accept connection from client
-		Rename GENERIC_CMD_SET_ATTACHMENT to AO_CMD_ATTACH_TO
+		Rename GENERIC_CMD_SET_ATTACHMENT to GENERIC_CMD_ATTACH_TO
 	PROTOCOL_VERSION 26:
 		Add TileDef tileable_horizontal, tileable_vertical flags
 	PROTOCOL_VERSION 27:
@@ -155,69 +155,19 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 		Stop sending TOSERVER_CLIENT_READY
 	PROTOCOL VERSION 32:
 		Add fading sounds
-	PROTOCOL VERSION 33:
-		Add TOCLIENT_UPDATE_PLAYER_LIST and send the player list to the client,
-			instead of guessing based on the active object list.
-	PROTOCOL VERSION 34:
-		Add sound pitch
-	PROTOCOL VERSION 35:
- 		Rename TOCLIENT_CHAT_MESSAGE to TOCLIENT_CHAT_MESSAGE_OLD (0x30)
- 		Add TOCLIENT_CHAT_MESSAGE (0x2F)
- 			This chat message is a signalisation message containing various
-			informations:
- 			* timestamp
- 			* sender
- 			* type (RAW, NORMAL, ANNOUNCE, SYSTEM)
- 			* content
-		Add TOCLIENT_CSM_RESTRICTION_FLAGS to define which CSM features should be
-			limited
-		Add settable player collisionbox. Breaks compatibility with older
-			clients as a 1-node vertical offset has been removed from player's
-			position
-		Add settable player stepheight using existing object property.
-			Breaks compatibility with older clients.
-	PROTOCOL VERSION 36:
-		Backwards compatibility drop
-		Add 'can_zoom' to player object properties
-		Add glow to object properties
-		Change TileDef serialization format.
-		Add world-aligned tiles.
-		Mod channels
-		Raise ObjectProperties version to 3 for removing 'can_zoom' and adding
-			'zoom_fov'.
-		Nodebox version 5
-		Add disconnected nodeboxes
-		Add TOCLIENT_FORMSPEC_PREPEND
-	PROTOCOL VERSION 37:
-		Redo detached inventory sending
-		Add TOCLIENT_NODEMETA_CHANGED
-		New network float format
-		ContentFeatures version 13
-		Add full Euler rotations instead of just yaw
-		Add TOCLIENT_PLAYER_SPEED
-	PROTOCOL VERSION 38:
-		Incremental inventory sending mode
-		Unknown inventory serialization fields no longer throw an error
-		Mod-specific formspec version
-		Player FOV override API
-		"ephemeral" added to TOCLIENT_PLAY_SOUND
-	PROTOCOL VERSION 39:
-		Updated set_sky packet
-		Adds new sun, moon and stars packets
-		Minimap modes
 */
 
-#define LATEST_PROTOCOL_VERSION 39
-#define LATEST_PROTOCOL_VERSION_STRING TOSTRING(LATEST_PROTOCOL_VERSION)
+#define LATEST_PROTOCOL_VERSION 32
 
 // Server's supported network protocol range
-#define SERVER_PROTOCOL_VERSION_MIN 37
+#define SERVER_PROTOCOL_VERSION_MIN 24
 #define SERVER_PROTOCOL_VERSION_MAX LATEST_PROTOCOL_VERSION
 
 // Client's supported network protocol range
 // The minimal version depends on whether
 // send_pre_v25_init is enabled or not
-#define CLIENT_PROTOCOL_VERSION_MIN 37
+#define CLIENT_PROTOCOL_VERSION_MIN 25
+#define CLIENT_PROTOCOL_VERSION_MIN_LEGACY 24
 #define CLIENT_PROTOCOL_VERSION_MAX LATEST_PROTOCOL_VERSION
 
 // Constant that differentiates the protocol from random data and other protocols
@@ -226,12 +176,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define PASSWORD_SIZE 28       // Maximum password length. Allows for
                                // base64-encoded SHA-1 (27+\0).
 
-// See also formspec [Version History] in doc/lua_api.txt
-#define FORMSPEC_API_VERSION 4
+#define FORMSPEC_API_VERSION 1
+#define FORMSPEC_VERSION_STRING "formspec_version[" TOSTRING(FORMSPEC_API_VERSION) "]"
 
 #define TEXTURENAME_ALLOWED_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
-
-typedef u16 session_t;
 
 enum ToClientCommand
 {
@@ -263,15 +211,26 @@ enum ToClientCommand
 	/*
 		Signals client that sudo mode auth failed.
 	*/
+	TOCLIENT_INIT_LEGACY = 0x10,
+	/*
+		Server's reply to TOSERVER_INIT.
+		Sent second after connected.
+
+		[0] u16 TOSERVER_INIT
+		[2] u8 deployed version
+		[3] v3s16 player's position + v3f(0,BS/2,0) floatToInt'd
+		[12] u64 map seed (new as of 2011-02-27)
+		[20] f1000 recommended send interval (in seconds) (new as of 14)
+
+		NOTE: The position in here is deprecated; position is
+		      explicitly sent afterwards
+	*/
 	TOCLIENT_ACCESS_DENIED = 0x0A,
 	/*
 		u8 reason
 		std::string custom reason (if needed, otherwise "")
 		u8 (bool) reconnect
 	*/
-
-	TOCLIENT_INIT_LEGACY = 0x10, // Obsolete
-
 	TOCLIENT_BLOCKDATA = 0x20, //TODO: Multiple blocks
 	TOCLIENT_ADDNODE = 0x21,
 	/*
@@ -282,9 +241,34 @@ enum ToClientCommand
 	TOCLIENT_REMOVENODE = 0x22,
 
 	TOCLIENT_PLAYERPOS = 0x23, // Obsolete
+	/*
+		[0] u16 command
+		// Followed by an arbitary number of these:
+		// Number is determined from packet length.
+		[N] u16 peer_id
+		[N+2] v3s32 position*100
+		[N+2+12] v3s32 speed*100
+		[N+2+12+12] s32 pitch*100
+		[N+2+12+12+4] s32 yaw*100
+	*/
+
 	TOCLIENT_PLAYERINFO = 0x24, // Obsolete
+	/*
+		[0] u16 command
+		// Followed by an arbitary number of these:
+		// Number is determined from packet length.
+		[N] u16 peer_id
+		[N] char[20] name
+	*/
+
 	TOCLIENT_OPT_BLOCK_NOT_FOUND = 0x25, // Obsolete
+
 	TOCLIENT_SECTORMETA = 0x26, // Obsolete
+	/*
+		[0] u16 command
+		[2] u8 sector count
+		[3...] v2s16 pos + sector metadata
+	*/
 
 	TOCLIENT_INVENTORY = 0x27,
 	/*
@@ -293,6 +277,21 @@ enum ToClientCommand
 	*/
 
 	TOCLIENT_OBJECTDATA = 0x28, // Obsolete
+	/*
+		Sent as unreliable.
+
+		u16 number of player positions
+		for each player:
+			u16 peer_id
+			v3s32 position*100
+			v3s32 speed*100
+			s32 pitch*100
+			s32 yaw*100
+		u16 count of blocks
+		for each block:
+			v3s16 blockpos
+			block objects
+	*/
 
 	TOCLIENT_TIME_OF_DAY = 0x29,
 	/*
@@ -301,38 +300,13 @@ enum ToClientCommand
 		f1000 time_speed
 	*/
 
-	TOCLIENT_CSM_RESTRICTION_FLAGS = 0x2A,
-	/*
-		u32 CSMRestrictionFlags byteflag
-	 */
-
-	TOCLIENT_PLAYER_SPEED = 0x2B,
-	/*
-		v3f added_vel
-	 */
-
-	TOCLIENT_MEDIA_PUSH = 0x2C,
-	/*
-		std::string raw_hash
-		std::string filename
-		bool should_be_cached
-		u32 len
-		char filedata[len]
-	*/
-
 	// (oops, there is some gap here)
 
-	TOCLIENT_CHAT_MESSAGE = 0x2F,
+	TOCLIENT_CHAT_MESSAGE = 0x30,
 	/*
-		u8 version
-		u8 message_type
-		u16 sendername length
-		wstring sendername
 		u16 length
 		wstring message
 	*/
-
-	TOCLIENT_CHAT_MESSAGE_OLD = 0x30, // Obsolete
 
 	TOCLIENT_ACTIVE_OBJECT_REMOVE_ADD = 0x31,
 	/*
@@ -377,13 +351,14 @@ enum ToClientCommand
 		wstring reason
 	*/
 
-	TOCLIENT_FOV = 0x36,
+	TOCLIENT_PLAYERITEM = 0x36, // Obsolete
 	/*
-		Sends an FOV override/multiplier to client.
-
-		f32 fov
-		bool is_multiplier
-		f32 transition_time
+		u16 count of player items
+		for all player items {
+			u16 peer id
+			u16 length of serialized item
+			string serialized item
+		}
 	*/
 
 	TOCLIENT_DEATHSCREEN = 0x37,
@@ -453,7 +428,6 @@ enum ToClientCommand
 		s32[3] pos_nodes*10000
 		u16 object_id
 		u8 loop (bool)
-		u8 ephemeral (bool)
 	*/
 
 	TOCLIENT_STOP_SOUND = 0x40,
@@ -516,13 +490,10 @@ enum ToClientCommand
 		f1000 expirationtime
 		f1000 size
 		u8 bool collisiondetection
+		u8 bool vertical
 		u32 len
 		u8[len] texture
-		u8 bool vertical
 		u8 collision_removal
-		TileAnimation animation
-		u8 glow
-		u8 object_collision
 	*/
 
 	TOCLIENT_ADD_PARTICLESPAWNER = 0x47,
@@ -540,27 +511,27 @@ enum ToClientCommand
 		f1000 minsize
 		f1000 maxsize
 		u8 bool collisiondetection
+		u8 bool vertical
 		u32 len
 		u8[len] texture
-		u8 bool vertical
-		u8 collision_removal
 		u32 id
-		TileAnimation animation
-		u8 glow
-		u8 object_collision
+		u8 collision_removal
 	*/
 
-	TOCLIENT_DELETE_PARTICLESPAWNER_LEGACY = 0x48, // Obsolete
+	TOCLIENT_DELETE_PARTICLESPAWNER_LEGACY = 0x48,
+	/*
+		u16 id
+	*/
 
 	TOCLIENT_HUDADD = 0x49,
 	/*
 		u32 id
 		u8 type
 		v2f1000 pos
-		u16 len
+		u32 len
 		u8[len] name
 		v2f1000 scale
-		u16 len2
+		u32 len2
 		u8[len2] text
 		u32 number
 		u32 item
@@ -569,9 +540,6 @@ enum ToClientCommand
 		v2f1000 offset
 		v3f1000 world_pos
 		v2s32 size
-		s16 z_index
-		u16 len3
-		u8[len3] text2
 	*/
 
 	TOCLIENT_HUDRM = 0x4a,
@@ -609,8 +577,7 @@ enum ToClientCommand
 
 	TOCLIENT_SET_SKY = 0x4f,
 	/*
-		Protocol 38:
-		u8[4] base_color (ARGB)
+		u8[4] color (ARGB)
 		u8 len
 		u8[len] type
 		u16 count
@@ -618,24 +585,6 @@ enum ToClientCommand
 			u8 len
 			u8[len] param
 		u8 clouds (boolean)
-
-		Protocol 39:
-		u8[4] bgcolor (ARGB)
-		std::string type
-		int texture_count
-		std::string[6] param
-		bool clouds
-		bool bgcolor_fog
-		u8[4] day_sky (ARGB)
-		u8[4] day_horizon (ARGB)
-		u8[4] dawn_sky (ARGB)
-		u8[4] dawn_horizon (ARGB)
-		u8[4] night_sky (ARGB)
-		u8[4] night_horizon (ARGB)
-		u8[4] indoors (ARGB)
-		u8[4] fog_sun_tint (ARGB)
-		u8[4] fog_moon_tint (ARGB)
-		std::string fog_tint_type
 	*/
 
 	TOCLIENT_OVERRIDE_DAY_NIGHT_RATIO = 0x50,
@@ -680,88 +629,16 @@ enum ToClientCommand
 		float step
 		float gain
 	*/
-	TOCLIENT_UPDATE_PLAYER_LIST = 0x56,
-	/*
-	 	u8 type
-	 	u16 number of players
-		for each player
-			u16 len
-			u8[len] player name
-	*/
-
-	TOCLIENT_MODCHANNEL_MSG = 0x57,
-	/*
-		u16 channel name length
-	 	std::string channel name
-	 	u16 channel name sender
-	 	std::string channel name
-	 	u16 message length
-	 	std::string message
-	*/
-
-	TOCLIENT_MODCHANNEL_SIGNAL = 0x58,
-	/*
-		u8 signal id
-	 	u16 channel name length
-	 	std::string channel name
-	*/
-
-	TOCLIENT_NODEMETA_CHANGED = 0x59,
-	/*
-		serialized and compressed node metadata
-	*/
-
-	TOCLIENT_SET_SUN = 0x5a,
-	/*
-		bool visible
-		std::string texture
-		std::string tonemap
-		std::string sunrise
-		f32 scale
-	*/
-
-	TOCLIENT_SET_MOON = 0x5b,
-	/*
-		bool visible
-		std::string texture
-		std::string tonemap
-		f32 scale
-	*/
-
-	TOCLIENT_SET_STARS = 0x5c,
-	/*
-		bool visible
-		u32 count
-		u8[4] starcolor (ARGB)
-		f32 scale
-	*/
 
 	TOCLIENT_SRP_BYTES_S_B = 0x60,
 	/*
-		Belonging to AUTH_MECHANISM_SRP.
+		Belonging to AUTH_MECHANISM_LEGACY_PASSWORD and AUTH_MECHANISM_SRP.
 
 		std::string bytes_s
 		std::string bytes_B
 	*/
 
-	TOCLIENT_FORMSPEC_PREPEND = 0x61,
-	/*
-		u16 len
-		u8[len] formspec
-	*/
-
-	TOCLIENT_MINIMAP_MODES = 0x62,
-	/*
-		u16 count // modes
-		u16 mode  // wanted current mode index after change
-		for each mode
-			u16 type
-			std::string label
-			u16 size
-			std::string extra
-	*/
-
-	TOCLIENT_NUM_MSG_TYPES = 0x63,
+	TOCLIENT_NUM_MSG_TYPES = 0x61,
 };
 
 enum ToServerCommand
@@ -777,7 +654,17 @@ enum ToServerCommand
 		std::string player name
 	*/
 
-	TOSERVER_INIT_LEGACY = 0x10, // Obsolete
+	TOSERVER_INIT_LEGACY = 0x10,
+	/*
+		Sent first after connected.
+
+		[0] u16 TOSERVER_INIT_LEGACY
+		[2] u8 SER_FMT_VER_HIGHEST_READ
+		[3] u8[20] player_name
+		[23] u8[28] password (new in some version)
+		[51] u16 minimum supported network protocol version (added sometime)
+		[53] u16 maximum supported network protocol version (added later than the previous one)
+	*/
 
 	TOSERVER_INIT2 = 0x11,
 	/*
@@ -787,27 +674,7 @@ enum ToServerCommand
 		[0] u16 TOSERVER_INIT2
 	*/
 
-	TOSERVER_MODCHANNEL_JOIN = 0x17,
-	/*
-		u16 channel name length
-	 	std::string channel name
-	 */
-
-	TOSERVER_MODCHANNEL_LEAVE = 0x18,
-	/*
-		u16 channel name length
-	 	std::string channel name
-	 */
-
-	TOSERVER_MODCHANNEL_MSG = 0x19,
-	/*
-		u16 channel name length
-	 	std::string channel name
-	 	u16 message length
-	 	std::string message
-	 */
-
-	TOSERVER_GETBLOCK = 0x20, // Obsolete
+	TOSERVER_GETBLOCK=0x20, // Obsolete
 	TOSERVER_ADDNODE = 0x21, // Obsolete
 	TOSERVER_REMOVENODE = 0x22, // Obsolete
 
@@ -842,10 +709,48 @@ enum ToServerCommand
 	*/
 
 	TOSERVER_ADDNODE_FROM_INVENTORY = 0x26, // Obsolete
+	/*
+		[0] u16 command
+		[2] v3s16 pos
+		[8] u16 i
+	*/
+
 	TOSERVER_CLICK_OBJECT = 0x27, // Obsolete
+	/*
+		length: 13
+		[0] u16 command
+		[2] u8 button (0=left, 1=right)
+		[3] v3s16 blockpos
+		[9] s16 id
+		[11] u16 item
+	*/
+
 	TOSERVER_GROUND_ACTION = 0x28, // Obsolete
+	/*
+		length: 17
+		[0] u16 command
+		[2] u8 action
+		[3] v3s16 nodepos_undersurface
+		[9] v3s16 nodepos_abovesurface
+		[15] u16 item
+		actions:
+		0: start digging (from undersurface)
+		1: place block (to abovesurface)
+		2: stop digging (all parameters ignored)
+		3: digging completed
+	*/
+
 	TOSERVER_RELEASE = 0x29, // Obsolete
-	TOSERVER_SIGNTEXT = 0x30, // Obsolete
+
+	// (oops, there is some gap here)
+
+	TOSERVER_SIGNTEXT = 0x30, // Old signs, obsolete
+	/*
+		v3s16 blockpos
+		s16 id
+		u16 textlen
+		textdata
+	*/
 
 	TOSERVER_INVENTORY_ACTION = 0x31,
 	/*
@@ -858,15 +763,35 @@ enum ToServerCommand
 		wstring message
 	*/
 
-	TOSERVER_SIGNNODETEXT = 0x33, // Obsolete
+	TOSERVER_SIGNNODETEXT = 0x33, // obsolete
+	/*
+		v3s16 p
+		u16 textlen
+		textdata
+	*/
+
 	TOSERVER_CLICK_ACTIVEOBJECT = 0x34, // Obsolete
+	/*
+		length: 7
+		[0] u16 command
+		[2] u8 button (0=left, 1=right)
+		[3] u16 id
+		[5] u16 item
+	*/
 
 	TOSERVER_DAMAGE = 0x35,
 	/*
 		u8 amount
 	*/
 
-	TOSERVER_PASSWORD_LEGACY = 0x36, // Obsolete
+	TOSERVER_PASSWORD_LEGACY = 0x36,
+	/*
+		Sent to change password.
+
+		[0] u16 TOSERVER_PASSWORD
+		[2] u8[28] old password
+		[30] u8[28] new password
+	*/
 
 	TOSERVER_PLAYERITEM = 0x37,
 	/*
@@ -894,6 +819,8 @@ enum ToServerCommand
 		2: digging completed
 		3: place block or item (to abovesurface)
 		4: use item
+
+		(Obsoletes TOSERVER_GROUND_ACTION and TOSERVER_CLICK_ACTIVEOBJECT.)
 	*/
 
 	TOSERVER_REMOVED_SOUNDS = 0x3a,
@@ -934,10 +861,17 @@ enum ToServerCommand
 			u16 length of name
 			string name
 		}
+	 */
+
+	TOSERVER_RECEIVED_MEDIA = 0x41,
+	/*
+		<no payload data>
 	*/
 
-	TOSERVER_RECEIVED_MEDIA = 0x41, // Obsolete
 	TOSERVER_BREATH = 0x42, // Obsolete
+	/*
+		u16 breath
+	*/
 
 	TOSERVER_CLIENT_READY = 0x43,
 	/*
@@ -960,7 +894,7 @@ enum ToServerCommand
 
 	TOSERVER_SRP_BYTES_A = 0x51,
 	/*
-		Belonging to AUTH_MECHANISM_SRP,
+		Belonging to AUTH_MECHANISM_LEGACY_PASSWORD and AUTH_MECHANISM_SRP,
 			depending on current_login_based_on.
 
 		std::string bytes_A
@@ -971,7 +905,7 @@ enum ToServerCommand
 
 	TOSERVER_SRP_BYTES_M = 0x52,
 	/*
-		Belonging to AUTH_MECHANISM_SRP.
+		Belonging to AUTH_MECHANISM_LEGACY_PASSWORD and AUTH_MECHANISM_SRP.
 
 		std::string bytes_M
 	*/
@@ -994,7 +928,7 @@ enum AuthMechanism
 	AUTH_MECHANISM_FIRST_SRP = 1 << 2,
 };
 
-enum AccessDeniedCode : u8 {
+enum AccessDeniedCode {
 	SERVER_ACCESSDENIED_WRONG_PASSWORD,
 	SERVER_ACCESSDENIED_UNEXPECTED_DATA,
 	SERVER_ACCESSDENIED_SINGLEPLAYER,
@@ -1017,49 +951,18 @@ enum NetProtoCompressionMode {
 
 const static std::string accessDeniedStrings[SERVER_ACCESSDENIED_MAX] = {
 	"Invalid password",
-	"Your client sent something the server didn't expect.  Try reconnecting or updating your client.",
+	"Your client sent something the server didn't expect.  Try reconnecting or updating your client",
 	"The server is running in simple singleplayer mode.  You cannot connect.",
-	"Your client's version is not supported.\nPlease contact the server administrator.",
-	"Player name contains disallowed characters",
-	"Player name not allowed",
-	"Too many users",
+	"Your client's version is not supported.\nPlease contact server administrator.",
+	"Player name contains disallowed characters.",
+	"Player name not allowed.",
+	"Too many users.",
 	"Empty passwords are disallowed.  Set a password and try again.",
 	"Another client is connected with this name.  If your client closed unexpectedly, try again in a minute.",
-	"Internal server error",
+	"Server authentication failed.  This is likely a server error.",
 	"",
-	"Server shutting down",
-	"The server has experienced an internal error.  You will now be disconnected."
+	"Server shutting down.",
+	"This server has experienced an internal error. You will now be disconnected."
 };
 
-enum PlayerListModifer : u8
-{
-	PLAYER_LIST_INIT,
-	PLAYER_LIST_ADD,
-	PLAYER_LIST_REMOVE,
-};
-
-enum CSMRestrictionFlags : u64 {
-	CSM_RF_NONE = 0x00000000,
-	// Until server-sent CSM and verifying of builtin are complete,
-	// 'CSM_RF_LOAD_CLIENT_MODS' also disables loading 'builtin'.
-	// When those are complete, this should return to only being a restriction on the
-	// loading of client mods.
-	CSM_RF_LOAD_CLIENT_MODS = 0x00000001, // Don't load client-provided mods or 'builtin'
-	CSM_RF_CHAT_MESSAGES = 0x00000002,    // Disable chat message sending from CSM
-	CSM_RF_READ_ITEMDEFS = 0x00000004,    // Disable itemdef lookups
-	CSM_RF_READ_NODEDEFS = 0x00000008,    // Disable nodedef lookups
-	CSM_RF_LOOKUP_NODES = 0x00000010,     // Limit node lookups
-	CSM_RF_READ_PLAYERINFO = 0x00000020,  // Disable player info lookups
-	CSM_RF_THIRD_PARTY_MODS = 0x00000100, // Don't load third-party CSMs
-	CSM_RF_ALL = 0xFFFFFFFF,
-};
-
-enum InteractAction : u8
-{
-	INTERACT_START_DIGGING,     // 0: start digging (from undersurface) or use
-	INTERACT_STOP_DIGGING,      // 1: stop digging (all parameters ignored)
-	INTERACT_DIGGING_COMPLETED, // 2: digging completed
-	INTERACT_PLACE,             // 3: place block or item (to abovesurface)
-	INTERACT_USE,               // 4: use item
-	INTERACT_ACTIVATE           // 5: rightclick air ("activate")
-};
+#endif

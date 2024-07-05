@@ -1,8 +1,6 @@
 #include <windows.h>
-#include <winuser.h>
 #include <commctrl.h>
 #include <richedit.h>
-
 #ifndef USE_CMAKE_CONFIG_H
 #define USE_CMAKE_CONFIG_H
 #endif
@@ -15,12 +13,8 @@
 	#define BUILDMODE "RUN_IN_PLACE=0"
 #endif
 
-#ifdef __MINGW32__
-CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "minetest.exe.manifest"
-#endif
-
 LANGUAGE 0, SUBLANG_NEUTRAL
-130        ICON         "multicraft-icon.ico"
+130        ICON         "MultiCraft.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -50,8 +44,8 @@ BEGIN
         VALUE "FileVersion", VERSION_STRING
         VALUE "InternalName", PROJECT_NAME
         VALUE "LegalCopyright", "(c) 2011-2015 celeron55"
-        VALUE "LegalTrademarks", """Minetest"" is the property of the Minetest community, don't use it without permission!"
-        VALUE "OriginalFilename", "minetest.exe"
+        VALUE "LegalTrademarks", """MultiCraft"" is the Minetest-based game, property of the MultiCraft community, don't use it without permission!"
+        VALUE "OriginalFilename", "MultiCraft.exe"
         VALUE "PrivateBuild", VERSION_EXTRA
         VALUE "ProductName", PROJECT_NAME_C
         VALUE "ProductVersion", PRODUCT_VERSION_STRING

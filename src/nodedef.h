@@ -17,33 +17,34 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef NODEDEF_HEADER
+#define NODEDEF_HEADER
 
 #include "irrlichttypes_bloated.h"
 #include <string>
 #include <iostream>
 #include <map>
+#include <list>
+#include "util/numeric.h"
 #include "mapnode.h"
-#include "nameidmapping.h"
 #ifndef SERVER
 #include "client/tile.h"
-#include <IMeshManipulator.h>
+#include "shader.h"
 class Client;
 #endif
 #include "itemgroup.h"
 #include "sound.h" // SimpleSoundSpec
 #include "constants.h" // BS
-#include "texture_override.h" // TextureOverride
 #include "tileanimation.h"
 
-// PROTOCOL_VERSION >= 37
-static const u8 CONTENTFEATURES_VERSION = 13;
-
+class INodeDefManager;
 class IItemDefManager;
 class ITextureSource;
 class IShaderSource;
 class IGameDef;
 class NodeResolver;
+
+typedef std::list<std::pair<content_t, int> > GroupItems;
 
 enum ContentParamType
 {
@@ -111,14 +112,6 @@ struct NodeBox
 	std::vector<aabb3f> connect_left;
 	std::vector<aabb3f> connect_back;
 	std::vector<aabb3f> connect_right;
-	std::vector<aabb3f> disconnected_top;
-	std::vector<aabb3f> disconnected_bottom;
-	std::vector<aabb3f> disconnected_front;
-	std::vector<aabb3f> disconnected_left;
-	std::vector<aabb3f> disconnected_back;
-	std::vector<aabb3f> disconnected_right;
-	std::vector<aabb3f> disconnected;
-	std::vector<aabb3f> disconnected_sides;
 
 	NodeBox()
 	{ reset(); }
@@ -137,31 +130,16 @@ enum LeavesStyle {
 	LEAVES_OPAQUE,
 };
 
-enum AutoScale : u8 {
-	AUTOSCALE_DISABLE,
-	AUTOSCALE_ENABLE,
-	AUTOSCALE_FORCE,
-};
-
-enum WorldAlignMode : u8 {
-	WORLDALIGN_DISABLE,
-	WORLDALIGN_ENABLE,
-	WORLDALIGN_FORCE,
-	WORLDALIGN_FORCE_NODEBOX,
-};
-
 class TextureSettings {
 public:
 	LeavesStyle leaves_style;
-	WorldAlignMode world_aligned_mode;
-	AutoScale autoscale_mode;
-	int node_texture_size;
 	bool opaque_water;
 	bool connected_glass;
+	bool use_normal_texture;
 	bool enable_mesh_cache;
 	bool enable_minimap;
 
-	TextureSettings() = default;
+	TextureSettings() {}
 
 	void readSettings();
 };
@@ -225,54 +203,38 @@ enum PlantlikeStyle {
 	PLANT_STYLE_HASH2,
 };
 
-enum AlignStyle : u8 {
-	ALIGN_STYLE_NODE,
-	ALIGN_STYLE_WORLD,
-	ALIGN_STYLE_USER_DEFINED,
-};
-
-enum AlphaMode : u8 {
-	ALPHAMODE_BLEND,
-	ALPHAMODE_CLIP,
-	ALPHAMODE_OPAQUE,
-	ALPHAMODE_LEGACY_COMPAT, /* means either opaque or clip */
-};
-
-
 /*
 	Stand-alone definition of a TileSpec (basically a server-side TileSpec)
 */
 
 struct TileDef
 {
-	std::string name = "";
-	bool backface_culling = true; // Takes effect only in special cases
-	bool tileable_horizontal = true;
-	bool tileable_vertical = true;
+	std::string name;
+	bool backface_culling; // Takes effect only in special cases
+	bool tileable_horizontal;
+	bool tileable_vertical;
 	//! If true, the tile has its own color.
-	bool has_color = false;
+	bool has_color;
 	//! The color of the tile.
-	video::SColor color = video::SColor(0xFFFFFFFF);
-	AlignStyle align_style = ALIGN_STYLE_NODE;
-	u8 scale = 0;
+	video::SColor color;
 
 	struct TileAnimationParams animation;
 
-	TileDef()
+	TileDef() :
+		name(""),
+		backface_culling(true),
+		tileable_horizontal(true),
+		tileable_vertical(true),
+		has_color(false),
+		color(video::SColor(0xFFFFFFFF))
 	{
 		animation.type = TAT_NONE;
 	}
 
 	void serialize(std::ostream &os, u16 protocol_version) const;
-	void deSerialize(std::istream &is, u8 contentfeatures_version,
-		NodeDrawType drawtype);
+	void deSerialize(std::istream &is, const u8 contentfeatures_version, const NodeDrawType drawtype);
 };
 
-// Defines the number of special tiles per nodedef
-//
-// NOTE: When changing this value, the enum entries of OverrideTarget and
-//       parser in TextureOverrideSource must be updated so that all special
-//       tiles can be overridden.
 #define CF_SPECIAL_COUNT 6
 
 struct ContentFeatures
@@ -323,7 +285,9 @@ struct ContentFeatures
 	// These will be drawn over the base tiles.
 	TileDef tiledef_overlay[6];
 	TileDef tiledef_special[CF_SPECIAL_COUNT]; // eg. flowing liquid
-	AlphaMode alpha;
+	// If 255, the node is opaque.
+	// Otherwise it uses texture alpha.
+	u8 alpha;
 	// The color of the node.
 	video::SColor color;
 	std::string palette_name;
@@ -333,13 +297,11 @@ struct ContentFeatures
 	// for NDT_CONNECTED pairing
 	u8 connect_sides;
 	std::vector<std::string> connects_to;
-	std::vector<content_t> connects_to_ids;
+	std::set<content_t> connects_to_ids;
 	// Post effect color, drawn when the camera is inside the node.
 	video::SColor post_effect_color;
-	// Flowing liquid or leveled nodebox, value = default level
+	// Flowing liquid or snow, value = default level
 	u8 leveled;
-	// Maximum value for leveled nodes
-	u8 leveled_max;
 
 	// --- LIGHTING-RELATED ---
 
@@ -369,8 +331,6 @@ struct ContentFeatures
 	// Player cannot build to these (placement prediction disabled)
 	bool rightclickable;
 	u32 damage_per_second;
-	// client dig prediction
-	std::string node_dig_prediction;
 
 	// --- LIQUID PROPERTIES ---
 
@@ -378,10 +338,8 @@ struct ContentFeatures
 	enum LiquidType liquid_type;
 	// If the content is liquid, this is the flowing version of the liquid.
 	std::string liquid_alternative_flowing;
-	content_t liquid_alternative_flowing_id;
 	// If the content is liquid, this is the source version of the liquid.
 	std::string liquid_alternative_source;
-	content_t liquid_alternative_source_id;
 	// Viscosity for fluid flow, ranging from 1 to 7, with
 	// 1 giving almost instantaneous propagation and 7 being
 	// the slowest possible
@@ -423,56 +381,26 @@ struct ContentFeatures
 	void reset();
 	void serialize(std::ostream &os, u16 protocol_version) const;
 	void deSerialize(std::istream &is);
+	void serializeOld(std::ostream &os, u16 protocol_version) const;
+	void deSerializeOld(std::istream &is, int version);
+	/*!
+	 * Since vertex alpha is no longer supported, this method
+	 * adds opacity directly to the texture pixels.
+	 *
+	 * \param tiles array of the tile definitions.
+	 * \param length length of tiles
+	 */
+	void correctAlpha(TileDef *tiles, int length);
 
 	/*
 		Some handy methods
 	*/
-	void setDefaultAlphaMode()
-	{
-		switch (drawtype) {
-		case NDT_NORMAL:
-		case NDT_LIQUID:
-		case NDT_FLOWINGLIQUID:
-			alpha = ALPHAMODE_OPAQUE;
-			break;
-		case NDT_NODEBOX:
-		case NDT_MESH:
-			alpha = ALPHAMODE_LEGACY_COMPAT; // this should eventually be OPAQUE
-			break;
-		default:
-			alpha = ALPHAMODE_CLIP;
-			break;
-		}
-	}
-
-	bool needsBackfaceCulling() const
-	{
-		switch (drawtype) {
-		case NDT_TORCHLIKE:
-		case NDT_SIGNLIKE:
-		case NDT_FIRELIKE:
-		case NDT_RAILLIKE:
-		case NDT_PLANTLIKE:
-		case NDT_PLANTLIKE_ROOTED:
-		case NDT_MESH:
-			return false;
-		default:
-			return true;
-		}
-	}
-
 	bool isLiquid() const{
 		return (liquid_type != LIQUID_NONE);
 	}
 	bool sameLiquid(const ContentFeatures &f) const{
 		if(!isLiquid() || !f.isLiquid()) return false;
-		return (liquid_alternative_flowing_id == f.liquid_alternative_flowing_id);
-	}
-
-	bool lightingEquivalent(const ContentFeatures &other) const {
-		return light_propagates == other.light_propagates
-				&& sunlight_propagates == other.sunlight_propagates
-				&& light_source == other.light_source;
+		return (liquid_alternative_flowing == f.liquid_alternative_flowing);
 	}
 
 	int getGroup(const std::string &group) const
@@ -481,319 +409,99 @@ struct ContentFeatures
 	}
 
 #ifndef SERVER
+	void fillTileAttribs(ITextureSource *tsrc, TileLayer *tile, TileDef *tiledef,
+		u32 shader_id, bool use_normal_texture, bool backface_culling,
+		u8 material_type);
 	void updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc,
 		scene::IMeshManipulator *meshmanip, Client *client, const TextureSettings &tsettings);
 #endif
-
-private:
-#ifndef SERVER
-	/*
-	 * Checks if any tile texture has any transparent pixels.
-	 * Prints a warning and returns true if that is the case, false otherwise.
-	 * This is supposed to be used for use_texture_alpha backwards compatibility.
-	 */
-	bool textureAlphaCheck(ITextureSource *tsrc, const TileDef *tiles,
-		int length);
-#endif
-
-	void setAlphaFromLegacy(u8 legacy_alpha);
-
-	u8 getAlphaForLegacy() const;
 };
 
-/*!
- * @brief This class is for getting the actual properties of nodes from their
- * content ID.
- *
- * @details The nodes on the map are represented by three numbers (see MapNode).
- * The first number (param0) is the type of a node. All node types have own
- * properties (see ContentFeatures). This class is for storing and getting the
- * properties of nodes.
- * The manager is first filled with registered nodes, then as the game begins,
- * functions only get `const` pointers to it, to prevent modification of
- * registered nodes.
- */
-class NodeDefManager {
+class INodeDefManager {
 public:
+	INodeDefManager(){}
+	virtual ~INodeDefManager(){}
+	// Get node definition
+	virtual const ContentFeatures &get(content_t c) const=0;
+	virtual const ContentFeatures &get(const MapNode &n) const=0;
+	virtual bool getId(const std::string &name, content_t &result) const=0;
+	virtual content_t getId(const std::string &name) const=0;
+	// Allows "group:name" in addition to regular node names
+	// returns false if node name not found, true otherwise
+	virtual bool getIds(const std::string &name, std::set<content_t> &result)
+			const=0;
+	virtual const ContentFeatures &get(const std::string &name) const=0;
+
+	virtual void serialize(std::ostream &os, u16 protocol_version) const=0;
+
+	virtual void pendNodeResolve(NodeResolver *nr)=0;
+	virtual bool cancelNodeResolveCallback(NodeResolver *nr)=0;
+	virtual bool nodeboxConnects(const MapNode from, const MapNode to, u8 connect_face)=0;
 	/*!
-	 * Creates a NodeDefManager, and registers three ContentFeatures:
-	 * \ref CONTENT_AIR, \ref CONTENT_UNKNOWN and \ref CONTENT_IGNORE.
-	 */
-	NodeDefManager();
-	~NodeDefManager();
-
-	/*!
-	 * Returns the properties for the given content type.
-	 * @param c content type of a node
-	 * @return properties of the given content type, or \ref CONTENT_UNKNOWN
-	 * if the given content type is not registered.
-	 */
-	inline const ContentFeatures& get(content_t c) const {
-		return
-			c < m_content_features.size() ?
-				m_content_features[c] : m_content_features[CONTENT_UNKNOWN];
-	}
-
-	/*!
-	 * Returns the properties of the given node.
-	 * @param n a map node
-	 * @return properties of the given node or @ref CONTENT_UNKNOWN if the
-	 * given content type is not registered.
-	 */
-	inline const ContentFeatures& get(const MapNode &n) const {
-		return get(n.getContent());
-	}
-
-	/*!
-	 * Returns the node properties for a node name.
-	 * @param name name of a node
-	 * @return properties of the given node or @ref CONTENT_UNKNOWN if
-	 * not found
-	 */
-	const ContentFeatures& get(const std::string &name) const;
-
-	/*!
-	 * Returns the content ID for the given name.
-	 * @param name a node name
-	 * @param[out] result will contain the content ID if found, otherwise
-	 * remains unchanged
-	 * @return true if the ID was found, false otherwise
-	 */
-	bool getId(const std::string &name, content_t &result) const;
-
-	/*!
-	 * Returns the content ID for the given name.
-	 * @param name a node name
-	 * @return ID of the node or @ref CONTENT_IGNORE if not found
-	 */
-	content_t getId(const std::string &name) const;
-
-	/*!
-	 * Returns the content IDs of the given node name or node group name.
-	 * Group names start with "group:".
-	 * @param name a node name or node group name
-	 * @param[out] result will be appended with matching IDs
-	 * @return true if `name` is a valid node name or a (not necessarily
-	 * valid) group name
-	 */
-	bool getIds(const std::string &name, std::vector<content_t> &result) const;
-
-	/*!
-	 * Returns the smallest box in integer node coordinates that
-	 * contains all nodes' selection boxes. The returned box might be larger
-	 * than the minimal size if the largest node is removed from the manager.
-	 */
-	inline core::aabbox3d<s16> getSelectionBoxIntUnion() const {
-		return m_selection_box_int_union;
-	}
-
-	/*!
-	 * Checks whether a node connects to an adjacent node.
-	 * @param from the node to be checked
-	 * @param to the adjacent node
-	 * @param connect_face a bit field indicating which face of the node is
-	 * adjacent to the other node.
-	 * Bits: +y (least significant), -y, -z, -x, +z, +x (most significant).
-	 * @return true if the node connects, false otherwise
-	 */
-	bool nodeboxConnects(MapNode from, MapNode to,
-			u8 connect_face) const;
-
-	/*!
-	 * Registers a NodeResolver to wait for the registration of
-	 * ContentFeatures. Once the node registration finishes, all
-	 * listeners are notified.
-	 */
-	void pendNodeResolve(NodeResolver *nr) const;
-
-	/*!
-	 * Stops listening to the NodeDefManager.
-	 * @return true if the listener was registered before, false otherwise
-	 */
-	bool cancelNodeResolveCallback(NodeResolver *nr) const;
-
-	/*!
-	 * Registers a new node type with the given name and allocates a new
-	 * content ID.
-	 * Should not be called with an already existing name.
-	 * @param name name of the node, must match with `def.name`.
-	 * @param def definition of the registered node type.
-	 * @return ID of the registered node or @ref CONTENT_IGNORE if
-	 * the function could not allocate an ID.
-	 */
-	content_t set(const std::string &name, const ContentFeatures &def);
-
-	/*!
-	 * Allocates a blank node ID for the given name.
-	 * @param name name of a node
-	 * @return allocated ID or @ref CONTENT_IGNORE if could not allocate
-	 * an ID.
-	 */
-	content_t allocateDummy(const std::string &name);
-
-	/*!
-	 * Removes the given node name from the manager.
-	 * The node ID will remain in the manager, but won't be linked to any name.
-	 * @param name name to be removed
-	 */
-	void removeNode(const std::string &name);
-
-	/*!
-	 * Regenerates the alias list (a map from names to node IDs).
-	 * @param idef the item definition manager containing alias information
-	 */
-	void updateAliases(IItemDefManager *idef);
-
-	/*!
-	 * Replaces the textures of registered nodes with the ones specified in
-	 * the texturepack's override.txt file
-	 *
-	 * @param overrides the texture overrides
-	 */
-	void applyTextureOverrides(const std::vector<TextureOverride> &overrides);
-
-	/*!
-	 * Only the client uses this. Loads textures and shaders required for
-	 * rendering the nodes.
-	 * @param gamedef must be a Client.
-	 * @param progress_cbk called each time a node is loaded. Arguments:
-	 * `progress_cbk_args`, number of loaded ContentFeatures, number of
-	 * total ContentFeatures.
-	 * @param progress_cbk_args passed to the callback function
-	 */
-	void updateTextures(IGameDef *gamedef,
-		void (*progress_cbk)(void *progress_args, u32 progress, u32 max_progress),
-		void *progress_cbk_args);
-
-	/*!
-	 * Writes the content of this manager to the given output stream.
-	 * @param protocol_version serialization version of ContentFeatures
-	 */
-	void serialize(std::ostream &os, u16 protocol_version) const;
-
-	/*!
-	 * Restores the manager from a serialized stream.
-	 * This clears the previous state.
-	 * @param is input stream containing a serialized NodeDefManager
-	 */
-	void deSerialize(std::istream &is);
-
-	/*!
-	 * Used to indicate that node registration has finished.
-	 * @param completed tells whether registration is complete
-	 */
-	inline void setNodeRegistrationStatus(bool completed) {
-		m_node_registration_complete = completed;
-	}
-
-	/*!
-	 * Notifies the registered NodeResolver instances that node registration
-	 * has finished, then unregisters all listeners.
-	 * Must be called after node registration has finished!
-	 */
-	void runNodeResolveCallbacks();
-
-	/*!
-	 * Sets the registration completion flag to false and unregisters all
-	 * NodeResolver instances listening to the manager.
-	 */
-	void resetNodeResolveState();
-
-	/*!
-	 * Resolves (caches the IDs) cross-references between nodes,
-	 * like liquid alternatives.
-	 * Must be called after node registration has finished!
-	 */
-	void resolveCrossrefs();
-
-private:
-	/*!
-	 * Resets the manager to its initial state.
-	 * See the documentation of the constructor.
-	 */
-	void clear();
-
-	/*!
-	 * Allocates a new content ID, and returns it.
-	 * @return the allocated ID or \ref CONTENT_IGNORE if could not allocate
-	 */
-	content_t allocateId();
-
-	/*!
-	 * Binds the given content ID and node name.
-	 * Registers them in \ref m_name_id_mapping and
-	 * \ref m_name_id_mapping_with_aliases.
-	 * @param i a content ID
-	 * @param name a node name
-	 */
-	void addNameIdMapping(content_t i, const std::string &name);
-
-	/*!
-	 * Removes a content ID from all groups.
-	 * Erases content IDs from vectors in \ref m_group_to_items and
-	 * removes empty vectors.
-	 * @param id Content ID
-	 */
-	void eraseIdFromGroups(content_t id);
-
-	/*!
-	 * Recalculates m_selection_box_int_union based on
-	 * m_selection_box_union.
-	 */
-	void fixSelectionBoxIntUnion();
-
-	//! Features indexed by ID.
-	std::vector<ContentFeatures> m_content_features;
-
-	//! A mapping for fast conversion between names and IDs
-	NameIdMapping m_name_id_mapping;
-
-	/*!
-	 * Like @ref m_name_id_mapping, but maps only from names to IDs, and
-	 * includes aliases too. Updated by \ref updateAliases().
-	 * Note: Not serialized.
-	 */
-	std::unordered_map<std::string, content_t> m_name_id_mapping_with_aliases;
-
-	/*!
-	 * A mapping from group names to a vector of content types that belong
-	 * to it. Necessary for a direct lookup in \ref getIds().
-	 * Note: Not serialized.
-	 */
-	std::unordered_map<std::string, std::vector<content_t>> m_group_to_items;
-
-	/*!
-	 * The next ID that might be free to allocate.
-	 * It can be allocated already, because \ref CONTENT_AIR,
-	 * \ref CONTENT_UNKNOWN and \ref CONTENT_IGNORE are registered when the
-	 * manager is initialized, and new IDs are allocated from 0.
-	 */
-	content_t m_next_id;
-
-	//! True if all nodes have been registered.
-	bool m_node_registration_complete;
-
-	/*!
-	 * The union of all nodes' selection boxes.
-	 * Might be larger if big nodes are removed from the manager.
-	 */
-	aabb3f m_selection_box_union;
-
-	/*!
-	 * The smallest box in integer node coordinates that
+	 * Returns the smallest box in node coordinates that
 	 * contains all nodes' selection boxes.
-	 * Might be larger if big nodes are removed from the manager.
 	 */
-	core::aabbox3d<s16> m_selection_box_int_union;
-
-	/*!
-	 * NodeResolver instances to notify once node registration has finished.
-	 * Even constant NodeDefManager instances can register listeners.
-	 */
-	mutable std::vector<NodeResolver *> m_pending_resolve_callbacks;
+	virtual core::aabbox3d<s16> getSelectionBoxIntUnion() const=0;
 };
 
-NodeDefManager *createNodeDefManager();
+class IWritableNodeDefManager : public INodeDefManager {
+public:
+	IWritableNodeDefManager(){}
+	virtual ~IWritableNodeDefManager(){}
+	virtual IWritableNodeDefManager* clone()=0;
+	// Get node definition
+	virtual const ContentFeatures &get(content_t c) const=0;
+	virtual const ContentFeatures &get(const MapNode &n) const=0;
+	virtual bool getId(const std::string &name, content_t &result) const=0;
+	// If not found, returns CONTENT_IGNORE
+	virtual content_t getId(const std::string &name) const=0;
+	// Allows "group:name" in addition to regular node names
+	virtual bool getIds(const std::string &name, std::set<content_t> &result)
+		const=0;
+	// If not found, returns the features of CONTENT_UNKNOWN
+	virtual const ContentFeatures &get(const std::string &name) const=0;
+
+	// Register node definition by name (allocate an id)
+	// If returns CONTENT_IGNORE, could not allocate id
+	virtual content_t set(const std::string &name,
+			const ContentFeatures &def)=0;
+	// If returns CONTENT_IGNORE, could not allocate id
+	virtual content_t allocateDummy(const std::string &name)=0;
+	// Remove a node
+	virtual void removeNode(const std::string &name)=0;
+
+	/*
+		Update item alias mapping.
+		Call after updating item definitions.
+	*/
+	virtual void updateAliases(IItemDefManager *idef)=0;
+
+	/*
+		Override textures from servers with ones specified in texturepack/override.txt
+	*/
+	virtual void applyTextureOverrides(const std::string &override_filepath)=0;
+
+	/*
+		Update tile textures to latest return values of TextueSource.
+	*/
+	virtual void updateTextures(IGameDef *gamedef,
+		void (*progress_cbk)(void *progress_args, u32 progress, u32 max_progress),
+		void *progress_cbk_args)=0;
+
+	virtual void serialize(std::ostream &os, u16 protocol_version) const=0;
+	virtual void deSerialize(std::istream &is)=0;
+
+	virtual void setNodeRegistrationStatus(bool completed)=0;
+
+	virtual void pendNodeResolve(NodeResolver *nr)=0;
+	virtual bool cancelNodeResolveCallback(NodeResolver *nr)=0;
+	virtual void runNodeResolveCallbacks()=0;
+	virtual void resetNodeResolveState()=0;
+	virtual void mapNodeboxConnections()=0;
+	virtual core::aabbox3d<s16> getSelectionBoxIntUnion() const=0;
+};
+
+IWritableNodeDefManager *createNodeDefManager();
 
 class NodeResolver {
 public:
@@ -801,21 +509,19 @@ public:
 	virtual ~NodeResolver();
 	virtual void resolveNodeNames() = 0;
 
-	// required because this class is used as mixin for ObjDef
-	void cloneTo(NodeResolver *res) const;
-
 	bool getIdFromNrBacklog(content_t *result_out,
-		const std::string &node_alt, content_t c_fallback,
-		bool error_on_fallback = true);
+		const std::string &node_alt, content_t c_fallback);
 	bool getIdsFromNrBacklog(std::vector<content_t> *result_out,
-		bool all_required = false, content_t c_fallback = CONTENT_IGNORE);
+		bool all_required=false, content_t c_fallback=CONTENT_IGNORE);
 
 	void nodeResolveInternal();
 
-	u32 m_nodenames_idx = 0;
-	u32 m_nnlistsizes_idx = 0;
+	u32 m_nodenames_idx;
+	u32 m_nnlistsizes_idx;
 	std::vector<std::string> m_nodenames;
 	std::vector<size_t> m_nnlistsizes;
-	const NodeDefManager *m_ndef = nullptr;
-	bool m_resolve_done = false;
+	INodeDefManager *m_ndef;
+	bool m_resolve_done;
 };
+
+#endif

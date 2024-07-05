@@ -35,41 +35,64 @@ common_update_cached_supp_proto()
 
 --------------------------------------------------------------------------------
 local function render_client_count(n)
-	if     n > 99 then return '99+'
+	if     n > 999 then return '999'
 	elseif n >= 0 then return tostring(n)
 	else return '?' end
 end
 
-local function configure_selected_world_params(idx)
-	local worldconfig = pkgmgr.get_worldconfig(menudata.worldlist:get_list()[idx].path)
-	if worldconfig.creative_mode then
-		core.settings:set("creative_mode", worldconfig.creative_mode)
-	end
-	if worldconfig.enable_damage then
-		core.settings:set("enable_damage", worldconfig.enable_damage)
-	end
-end
-
 --------------------------------------------------------------------------------
-function image_column(tooltip, flagname)
+function image_column(tooltip)
 	return "image,tooltip=" .. core.formspec_escape(tooltip) .. "," ..
 		"0=" .. core.formspec_escape(defaulttexturedir .. "blank.png") .. "," ..
-		"1=" .. core.formspec_escape(defaulttexturedir ..
-			(flagname and "server_flags_" .. flagname .. ".png" or "blank.png")) .. "," ..
-		"2=" .. core.formspec_escape(defaulttexturedir .. "server_ping_4.png") .. "," ..
-		"3=" .. core.formspec_escape(defaulttexturedir .. "server_ping_3.png") .. "," ..
-		"4=" .. core.formspec_escape(defaulttexturedir .. "server_ping_2.png") .. "," ..
-		"5=" .. core.formspec_escape(defaulttexturedir .. "server_ping_1.png")
+		"1=" .. core.formspec_escape(defaulttexturedir .. "server_flags_favorite.png") .. "," ..
+		"2=" .. core.formspec_escape(defaulttexturedir .. "server_flags_mc.png") .. "," ..
+		"3=" .. core.formspec_escape(defaulttexturedir .. "server_flags_mt.png") .. "," ..
+		"4=" .. core.formspec_escape(defaulttexturedir .. "server_flags_damage.png") .. "," ..
+		"5=" .. core.formspec_escape(defaulttexturedir .. "server_flags_creative.png") .. "," ..
+		"6=" .. core.formspec_escape(defaulttexturedir .. "server_flags_pvp.png") .. "," ..
+		"14=" .. core.formspec_escape(defaulttexturedir .. "server_ping_4.png") .. "," ..
+		"13=" .. core.formspec_escape(defaulttexturedir .. "server_ping_3.png") .. "," ..
+		"12=" .. core.formspec_escape(defaulttexturedir .. "server_ping_2.png") .. "," ..
+		"11=" .. core.formspec_escape(defaulttexturedir .. "server_ping_1.png")
 end
 
+--------------------------------------------------------------------------------
+function order_favorite_list(list, mobile)
+	local res = {}
+	local non_mobile_servers = {}
+	-- orders the multicraft list before support
+	for i = 1, #list do
+		local fav = list[i]
+		if mobile and not fav.mobile_friendly then
+			non_mobile_servers[("%s:%s"):format(fav.address, fav.port)] = fav
+		elseif fav.server_id == "multicraft" then
+			res[#res + 1] = fav
+		end
+	end
+	for i = 1, #list do
+		local fav = list[i]
+		if (mobile and fav.mobile_friendly or not mobile) and
+				is_server_protocol_compat(fav.proto_min, fav.proto_max) and
+				fav.server_id ~= "multicraft" then
+			res[#res + 1] = fav
+		end
+	end
+	return res, non_mobile_servers
+end
 
 --------------------------------------------------------------------------------
-function render_serverlist_row(spec, is_favorite)
+function render_serverlist_row(spec, is_favorite, is_approved)
+	-- Get information from non_mobile_servers.
+	if is_favorite and not spec.proto_min and menudata.non_mobile_servers then
+		local id = ("%s:%s"):format(spec.address, spec.port)
+		spec = menudata.non_mobile_servers[id] or spec
+	end
+
 	local text = ""
 	if spec.name then
 		text = text .. core.formspec_escape(spec.name:trim())
 	elseif spec.address then
-		text = text .. core.formspec_escape(spec.address:trim())
+		text = text .. spec.address:trim()
 		if spec.port then
 			text = text .. ":" .. spec.port
 		end
@@ -81,19 +104,23 @@ function render_serverlist_row(spec, is_favorite)
 	if is_favorite then
 		details = "1,"
 	else
-		details = "0,"
+		if is_approved then
+			details = "2,"
+		else
+			details = "3,"
+		end
 	end
 
-	if spec.ping then
-		local ping = spec.ping * 1000
-		if ping <= 50 then
-			details = details .. "2,"
-		elseif ping <= 100 then
-			details = details .. "3,"
-		elseif ping <= 250 then
-			details = details .. "4,"
+	if spec.lag then
+		local lag = spec.lag * 1000
+		if lag <= 100 then
+			details = details .. "14,"
+		elseif lag <= 150 then
+			details = details .. "13,"
+		elseif lag <= 250 then
+			details = details .. "12,"
 		else
-			details = details .. "5,"
+			details = details .. "11,"
 		end
 	else
 		details = details .. "0,"
@@ -105,12 +132,12 @@ function render_serverlist_row(spec, is_favorite)
 		-- Choose a color depending on how many clients are connected
 		-- (relatively to clients_max)
 		local clients_color
-		if     grey_out		      then clients_color = '#aaaaaa'
-		elseif spec.clients == 0      then clients_color = ''        -- 0 players: default/white
+		if     grey_out               then clients_color = '#aaaaaa'
+		elseif spec.clients    == 0   then clients_color = ''        -- 0 players: default/white
 		elseif clients_percent <= 60  then clients_color = '#a1e587' -- 0-60%: green
 		elseif clients_percent <= 90  then clients_color = '#ffdc97' -- 60-90%: yellow
 		elseif clients_percent == 100 then clients_color = '#dd5b5b' -- full server: red (darker)
-		else				   clients_color = '#ffba97' -- 90-100%: orange
+		else                               clients_color = '#ffba97' -- 90-100%: orange
 		end
 
 		details = details .. clients_color .. ',' ..
@@ -124,19 +151,11 @@ function render_serverlist_row(spec, is_favorite)
 	end
 
 	if spec.creative then
-		details = details .. "1,"
-	else
-		details = details .. "0,"
-	end
-
-	if spec.damage then
-		details = details .. "1,"
-	else
-		details = details .. "0,"
-	end
-
-	if spec.pvp then
-		details = details .. "1,"
+		details = details .. "5,"
+	elseif spec.pvp then
+		details = details .. "6,"
+	elseif spec.damage then
+		details = details .. "4,"
 	else
 		details = details .. "0,"
 	end
@@ -146,15 +165,35 @@ end
 
 --------------------------------------------------------------------------------
 os.tempfolder = function()
-	local temp = core.get_temp_path()
-	return temp .. DIR_DELIM .. "MT_" .. math.random(0, 10000)
-end
+	if core.settings:get("TMPFolder") then
+		return core.settings:get("TMPFolder") .. DIR_DELIM .. "MT_" .. math.random(0,10000)
+	end
 
---------------------------------------------------------------------------------
-os.tmpname = function()
-	local path = os.tempfolder()
-	io.open(path, "w"):close()
-	return path
+	local filetocheck = os.tmpname()
+	os.remove(filetocheck)
+
+	-- luacheck: ignore
+	-- https://blogs.msdn.microsoft.com/vcblog/2014/06/18/c-runtime-crt-features-fixes-and-breaking-changes-in-visual-studio-14-ctp1/
+	--   The C runtime (CRT) function called by os.tmpname is tmpnam.
+	--   Microsofts tmpnam implementation in older CRT / MSVC releases is defective.
+	--   tmpnam return values starting with a backslash characterize this behavior.
+	-- https://sourceforge.net/p/mingw-w64/bugs/555/
+	--   MinGW tmpnam implementation is forwarded to the CRT directly.
+	-- https://sourceforge.net/p/mingw-w64/discussion/723797/thread/55520785/
+	--   MinGW links to an older CRT release (msvcrt.dll).
+	--   Due to legal concerns MinGW will never use a newer CRT.
+	--
+	--   Make use of TEMP to compose the temporary filename if an old
+	--   style tmpnam return value is detected.
+	if filetocheck:sub(1, 1) == "\\" then
+		local tempfolder = os.getenv("TEMP")
+		return tempfolder .. filetocheck
+	end
+
+	local randname = "MTTempModFolder_" .. math.random(0,10000)
+	local backstring = filetocheck:reverse()
+	return filetocheck:sub(0, filetocheck:len() - backstring:find(DIR_DELIM) + 1) ..
+		randname
 end
 
 --------------------------------------------------------------------------------
@@ -162,10 +201,9 @@ function menu_render_worldlist()
 	local retval = ""
 	local current_worldlist = menudata.worldlist:get_list()
 
-	for i, v in ipairs(current_worldlist) do
+	for _, v in ipairs(current_worldlist) do
 		if retval ~= "" then retval = retval .. "," end
-		retval = retval .. core.formspec_escape(v.name) ..
-				" \\[" .. core.formspec_escape(v.gameid) .. "\\]"
+		retval = retval .. core.formspec_escape(v.name)
 	end
 
 	return retval
@@ -182,10 +220,45 @@ function menu_handle_key_up_down(fields, textlist, settingname)
 			newidx = oldidx + 1
 		end
 		core.settings:set(settingname, menudata.worldlist:get_raw_index(newidx))
-		configure_selected_world_params(newidx)
 		return true
 	end
 	return false
+end
+
+--------------------------------------------------------------------------------
+function asyncOnlineFavourites(mobile)
+	if not menudata.public_known then
+		menudata.public_known = {{
+			name = fgettext("Loading..."),
+			description = fgettext_ne("Try reenabling public serverlist and check your internet connection.")
+		}}
+	end
+	menudata.favorites = menudata.public_known
+	menudata.favorites_is_public = true
+
+	if not menudata.public_downloading then
+		menudata.public_downloading = true
+	else
+		return
+	end
+
+	core.handle_async(
+		function()
+			return core.get_favorites("online")
+		end,
+		nil,
+		function(result)
+			menudata.public_downloading = nil
+			local favs, non_mobile = order_favorite_list(result, mobile)
+			if favs[1] then
+				menudata.public_known = favs
+				menudata.favorites = menudata.public_known
+				menudata.favorites_is_public = true
+				menudata.non_mobile_servers = non_mobile
+			end
+			core.event_handler("Refresh")
+		end
+	)
 end
 
 --------------------------------------------------------------------------------
@@ -261,57 +334,4 @@ function menu_worldmt(selected, setting, value)
 	else
 		return nil
 	end
-end
-
-function menu_worldmt_legacy(selected)
-	local modes_names = {"creative_mode", "enable_damage", "server_announce"}
-	for _, mode_name in pairs(modes_names) do
-		local mode_val = menu_worldmt(selected, mode_name)
-		if mode_val then
-			core.settings:set(mode_name, mode_val)
-		else
-			menu_worldmt(selected, mode_name, core.settings:get(mode_name))
-		end
-	end
-end
---------------------------------------------------------------------------------
-function get_language_list()
-	-- Get a list of languages and language names
-	local path_locale = core.get_locale_path()
-	local languages = core.get_dir_list(path_locale, true)
-	local language_names = {}
-	for i = #languages, 1, -1 do
-		local language = languages[i]
-		local f = io.open(path_locale .. DIR_DELIM .. language .. DIR_DELIM ..
-						  "LC_MESSAGES" .. DIR_DELIM .. "minetest.mo")
-		if f then
-			-- HACK
-			local name = f:read("*a"):match("\nLanguage%-Team: ([^\\\n\"]+) <https://")
-			language_names[language] = name or language
-			f:close()
-		else
-			table.remove(languages, i)
-		end
-	end
-
-	languages[#languages + 1] = "en"
-	language_names.en = "English"
-
-	-- Sort the languages list based on their human readable name and make sure
-	-- that English is the first entry
-	table.sort(languages, function(a, b)
-		return a == "en" or (b ~= "en" and language_names[a] < language_names[b])
-	end)
-
-	local language_name_list = {}
-	for i, language in ipairs(languages) do
-		language_name_list[i] = core.formspec_escape(language_names[language])
-	end
-
-	local lang_idx = table.indexof(languages, fgettext("LANG_CODE"))
-	if lang_idx < 0 then
-		lang_idx = table.indexof(languages, "en")
-	end
-
-	return languages, lang_idx, language_name_list
 end

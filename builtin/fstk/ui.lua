@@ -18,8 +18,8 @@
 ui = {}
 ui.childlist = {}
 ui.default = nil
--- Whether fstk is currently showing its own formspec instead of active ui elements.
-ui.overridden = false
+
+local maintab = core.settings:get("maintab_LAST")
 
 --------------------------------------------------------------------------------
 function ui.add(child)
@@ -56,91 +56,100 @@ end
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-local maintab = core.settings:get("maintab_LAST")
-local connect_time = tonumber(core.settings:get("connect_time")) or 0
+local function wordwrap_quickhack(str)
+	local res = ""
+	local ar = str:split("\n")
+	for i = 1, #ar do
+		local text = ar[i]
+		-- Hack to add word wrapping.
+		-- TODO: Add engine support for wrapping in formspecs
+		while #text > 80 do
+			if res ~= "" then
+				res = res .. ","
+			end
+			res = res .. core.formspec_escape(text:sub(1, 79))
+			text = text:sub(80, #text)
+		end
+		if res ~= "" then
+			res = res .. ","
+		end
+		res = res .. core.formspec_escape(text)
+	end
+	return res
+end
+
+--------------------------------------------------------------------------------
+local connect_time = tonumber(core.settings:get("connect_time"))
 
 function ui.update()
-	ui.overridden = false
-	local formspec = {}
+	local formspec = ""
+
+	-- attempt auto restart
+	if gamedata ~= nil and gamedata.errormessage ~= nil and
+			core.settings:get_bool("auto_connect") == true and
+			connect_time and connect_time < os.time() - 30 and
+			not gamedata.errormessage:find("Kicked") then
+		if maintab == "local" then
+			gamedata.singleplayer = true
+			gamedata.selected_world =
+				tonumber(core.settings:get("mainmenu_last_selected_world"))
+		end
+		core.settings:set("connect_time", os.time())
+		gamedata.reconnect_requested = false
+		gamedata.errormessage = nil
+		gamedata.do_reconnect = true
+		core.start()
+		return
+	end
 
 	-- handle errors
 	if gamedata ~= nil and gamedata.reconnect_requested then
-		local error_message = core.formspec_escape(
-				gamedata.errormessage or "<none available>")
-		formspec = {
-			"formspec_version[3]",
-			"size[14,8.25]",
-			"bgcolor[#0000]",
-			"background9[0,0;0,0;", defaulttexturedir_esc, "bg_common.png;true;40]",
-			"set_focus[btn_reconnect_yes;true]",
-			"textarea[0.6,0.5;12.8,0.6;;;", fgettext("The server has requested a reconnect:"), "]",
-			"background9[0.4,1.1;13.2,5.2;", defaulttexturedir_esc,
-				"worldlist_bg.png;false;40]",
-			"textarea[0.6,1.3;12.8,4.8;;;", error_message, "]",
-			btn_style("btn_reconnect_yes") ..
-			"button[2,6.725;4,1;btn_reconnect_yes;" .. fgettext("Reconnect") .. "]",
-			btn_style("btn_reconnect_no") ..
-			"button[8,6.725;4,1;btn_reconnect_no;" .. fgettext("Main menu") .. "]"
-		}
-		ui.overridden = true
+		formspec = wordwrap_quickhack(gamedata.errormessage or "")
+		formspec = "size[12,5]" ..
+				"label[0.5,0;" .. fgettext("The server has requested a reconnect:") ..
+				"]textlist[0.2,0.8;11.5,3.5;;" .. formspec ..
+				"]button[6,4.6;3,0.5;btn_reconnect_no;" .. fgettext("Close") .. "]" ..
+				"button[3,4.6;3,0.5;btn_reconnect_yes;" .. fgettext("Reconnect") .. "]"
 	elseif gamedata ~= nil and gamedata.errormessage ~= nil then
-		local error_message = core.formspec_escape(gamedata.errormessage)
+		formspec = wordwrap_quickhack(gamedata.errormessage)
 
 		local error_title
-		local mod_error = gamedata.errormessage:find("ModError") or gamedata.errormessage:find("LuaError")
-		if mod_error then
+		if gamedata.errormessage:find("ModError") then
 			error_title = fgettext("An error occurred in a Lua script:")
 		else
 			error_title = fgettext("An error occurred:")
 		end
-		local restart_btn
-		if (maintab == "local" or maintab == "local_default") and mod_error and
-				core.get_us_time() - connect_time > 30 then
-			restart_btn =
-				btn_style("btn_reconnect_yes") ..
-				"button[2,6.725;4,1;btn_reconnect_yes;" .. fgettext("Restart") .. "]" ..
-				btn_style("btn_reconnect_no") ..
-				"button[8,6.725;4,1;btn_reconnect_no;" .. fgettext("Main menu") .. "]" ..
-				"set_focus[btn_reconnect_yes;true]"
-		else
-			restart_btn =
-				btn_style("btn_reconnect_no") ..
-				"button[5,6.725;4,1;btn_reconnect_no;" .. fgettext("OK") .. "]" ..
-				"set_focus[btn_reconnect_no;true]"
+		local restart_btn = "]button[4.5,4.6;3,0.5;btn_reconnect_no;" .. fgettext("Close") .. "]"
+		if maintab == "local" and
+				connect_time and connect_time < os.time() - 30 then
+			restart_btn = "]button[6,4.6;3,0.5;btn_reconnect_no;" .. fgettext("Close") .. "]" ..
+				"button[3,4.6;3,0.5;btn_reconnect_yes;" .. fgettext("Restart") .. "]"
 		end
-		formspec = {
-			"formspec_version[3]",
-			"size[14,8.25]",
-			"bgcolor[#0000]",
-			"background9[0,0;0,0;", defaulttexturedir_esc, "bg_common.png;true;40]",
-			"textarea[0.6,0.5;12.8,0.6;;;", error_title, "]",
-			"background9[0.4,1.1;13.2,5.2;", defaulttexturedir_esc,
-				"worldlist_bg.png;false;40]",
-			"textarea[0.6,1.3;12.8,4.8;;;", error_message, "]",
-			restart_btn
-		}
-		ui.overridden = true
+		formspec = "size[12,5]" ..
+				"label[0.5,0;" .. error_title ..
+				"]textlist[0.2,0.8;11.5,3.5;;" .. formspec ..
+				restart_btn
 	else
 		local active_toplevel_ui_elements = 0
-		for key,value in pairs(ui.childlist) do
+		for _, value in pairs(ui.childlist) do
 			if (value.type == "toplevel") then
 				local retval = value:get_formspec()
 
 				if retval ~= nil and retval ~= "" then
-					active_toplevel_ui_elements = active_toplevel_ui_elements + 1
-					table.insert(formspec, retval)
+					active_toplevel_ui_elements = active_toplevel_ui_elements +1
+					formspec = formspec .. retval
 				end
 			end
 		end
 
 		-- no need to show addons if there ain't a toplevel element
 		if (active_toplevel_ui_elements > 0) then
-			for key,value in pairs(ui.childlist) do
+			for _, value in pairs(ui.childlist) do
 				if (value.type == "addon") then
 					local retval = value:get_formspec()
 
 					if retval ~= nil and retval ~= "" then
-						table.insert(formspec, retval)
+						formspec = formspec .. retval
 					end
 				end
 			end
@@ -155,16 +164,15 @@ function ui.update()
 			core.log("warning", "no toplevel ui element "..
 					"active; switching to default")
 			ui.childlist[ui.default]:show()
-			formspec = {ui.childlist[ui.default]:get_formspec()}
+			formspec = ui.childlist[ui.default]:get_formspec()
 		end
 	end
-	core.update_formspec(table.concat(formspec))
+	core.update_formspec(formspec)
 end
 
 --------------------------------------------------------------------------------
 function ui.handle_buttons(fields)
-	for key,value in pairs(ui.childlist) do
-
+	for _, value in pairs(ui.childlist) do
 		local retval = value:handle_buttons(fields)
 
 		if retval then
@@ -177,9 +185,7 @@ end
 
 --------------------------------------------------------------------------------
 function ui.handle_events(event)
-
-	for key,value in pairs(ui.childlist) do
-
+	for _, value in pairs(ui.childlist) do
 		if value.handle_events ~= nil then
 			local retval = value:handle_events(event)
 
@@ -197,12 +203,12 @@ end
 --------------------------------------------------------------------------------
 core.button_handler = function(fields)
 	if fields["btn_reconnect_yes"] then
-		if maintab == "local" or maintab == "local_default" then
+		if core.settings:get("maintab_LAST") == "local" then
 			gamedata.singleplayer = true
 			gamedata.selected_world =
 				tonumber(core.settings:get("mainmenu_last_selected_world"))
 		end
-		core.settings:set("connect_time", core.get_us_time())
+		core.settings:set("connect_time", os.time())
 		gamedata.reconnect_requested = false
 		gamedata.errormessage = nil
 		gamedata.do_reconnect = true
@@ -222,16 +228,6 @@ end
 
 --------------------------------------------------------------------------------
 core.event_handler = function(event)
-	-- Handle error messages
-	if ui.overridden then
-		if event == "MenuQuit" then
-			gamedata.errormessage = nil
-			gamedata.reconnect_requested = false
-			ui.update()
-		end
-		return
-	end
-
 	if ui.handle_events(event) then
 		ui.update()
 		return
@@ -241,18 +237,4 @@ core.event_handler = function(event)
 		ui.update()
 		return
 	end
-end
-
---------------------------------------------------------------------------------
-if core.settings:get("just_reconnected") then
-	core.settings:remove("just_reconnected")
-elseif gamedata and gamedata.errormessage == "AsyncErr: Failed to bind socket (port already in use?)" and
-		(maintab == "local" or maintab == "local_default") and not core.settings:get_bool("enable_server") then
-	core.settings:set("just_reconnected", "true")
-	gamedata.singleplayer = true
-	gamedata.selected_world =
-		tonumber(core.settings:get("mainmenu_last_selected_world"))
-	gamedata.errormessage = nil
-	gamedata.do_reconnect = true
-	core.start()
 end

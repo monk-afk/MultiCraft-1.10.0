@@ -2,14 +2,10 @@
 
 local builtin_shared = ...
 
-local abs, atan2, cos, floor, max, sin, random =
-	math.abs, math.atan2, math.cos, math.floor, math.max, math.sin, math.random
-local vadd, vnew, vmultiply, vnormalize, vsubtract =
-	vector.add, vector.new, vector.multiply, vector.normalize, vector.subtract
-local tcopy = table.copy
+local abs, atan2, cos, floor, max, sin, random = math.abs, math.atan2, math.cos, math.floor, math.max, math.sin, math.random
+local vadd, vnew, vmultiply, vnormalize, vsubtract = vector.add, vector.new, vector.multiply, vector.normalize, vector.subtract
 
 local creative_mode = core.settings:get_bool("creative_mode")
-local node_drop = core.settings:get_bool("node_drop")
 
 local function copy_pointed_thing(pointed_thing)
 	return {
@@ -347,7 +343,7 @@ function core.item_place_node(itemstack, placer, pointed_thing, param2,
 
 	-- Transfer color information
 	if metatable.palette_index and not def.place_param2 then
-		local color_divisor = nil
+		local color_divisor
 		if def.paramtype2 == "color" then
 			color_divisor = 1
 		elseif def.paramtype2 == "colorwallmounted" then
@@ -375,14 +371,6 @@ function core.item_place_node(itemstack, placer, pointed_thing, param2,
 
 	-- Add node and update
 	core.add_node(place_to, newnode)
-
-	-- Play sound if it was done by a player
-	if playername ~= "" and def.sounds and def.sounds.place then
-		core.sound_play(def.sounds.place, {
-			pos = place_to,
-			exclude_player = playername,
-		}, true)
-	end
 
 	local take_item = true
 
@@ -530,20 +518,19 @@ end
 
 function core.item_drop(itemstack, dropper, pos)
 	local dropper_is_player = dropper and dropper:is_player()
-	local p = tcopy(pos)
+	local p = table.copy(pos)
+	local cnt = itemstack:get_count()
 	if not core.is_valid_pos(p) then
 		return
 	end
 	if dropper_is_player then
 		p.y = p.y + 1.2
 	end
-	local sneak = dropper_is_player and dropper:get_player_control().sneak
-	local cnt = sneak and 1 or itemstack:get_count()
 	local item = itemstack:take_item(cnt)
 	local obj = core.add_item(p, item)
 	if obj then
 		if dropper_is_player then
-			local vel = dropper.get_velocity and dropper:get_velocity() or vnew
+			local vel = dropper:get_player_velocity()
 			local dir = dropper:get_look_dir()
 			dir.x = vel.x + dir.x * 4
 			dir.y = vel.y + dir.y * 4 + 2
@@ -563,52 +550,37 @@ function core.item_drop(itemstack, dropper, pos)
 	-- environment failed
 end
 
-function core.do_item_eat(hp_change, replace_with_item, itemstack, user, pointed_thing)
-	for _, callback in pairs(core.registered_on_item_eats) do
-		local result = callback(hp_change, replace_with_item, itemstack, user, pointed_thing)
-		if result then
-			return result
-		end
-	end
-	local def = itemstack:get_definition()
-	if itemstack:take_item() ~= nil then
-		user:set_hp(user:get_hp() + hp_change)
-
-		if def and def.sound and def.sound.eat then
-			core.sound_play(def.sound.eat, {
-				pos = user:get_pos(),
-				max_hear_distance = 16
-			}, true)
-		end
-
-		if replace_with_item then
-			if itemstack:is_empty() then
-				itemstack:add_item(replace_with_item)
-			else
-				local inv = user:get_inventory()
-				-- Check if inv is null, since non-players don't have one
-				if inv and inv:room_for_item("main", {name=replace_with_item}) then
-					inv:add_item("main", replace_with_item)
-				else
-					local pos = user:get_pos()
-					pos.y = floor(pos.y + 0.5)
-					core.add_item(pos, replace_with_item)
-				end
-			end
-		end
-	end
-	return itemstack
-end
-
-function core.item_eat(hp_change, replace_with_item)
+local enable_damage = core.settings:get_bool("enable_damage")
+function core.item_eat(hp_change, replace_with_item, poison)
 	return function(itemstack, user, pointed_thing)  -- closure
 		if user then
-			if user:is_player() and pointed_thing.type == "object" then
-				pointed_thing.ref:right_click(user)
-				return user:get_wielded_item()
+			local pos = user:get_pos()
+			pos.y = pos.y + 1.3
+			if not core.is_valid_pos(pos) then
+				return
 			end
 
-			return core.do_item_eat(hp_change, replace_with_item, itemstack, user, pointed_thing)
+			local dir = user:get_look_dir()
+			core.add_particlespawner({
+				amount = 20,
+				time = 0.1,
+				minpos = pos,
+				maxpos = pos,
+				minvel = {x = dir.x - 1, y = 2, z = dir.z - 1},
+				maxvel = {x = dir.x + 1, y = 2, z = dir.z + 1},
+				minacc = {x = 0, y = -5, z = 0},
+				maxacc = {x = 0, y = -9, z = 0},
+				minexptime = 1,
+				maxexptime = 1,
+				minsize = 1,
+				maxsize = 1,
+				vertical = false,
+				texture = core.registered_items[itemstack:get_name()].inventory_image
+			})
+			core.sound_play("player_eat", {pos = pos, max_hear_distance = 10, gain = 0.3})
+			if enable_damage then
+				return core.do_item_eat(hp_change, replace_with_item, poison, itemstack, user, pointed_thing)
+			end
 		end
 	end
 end
@@ -628,7 +600,7 @@ function core.handle_node_drops(pos, drops, digger)
 	-- Add dropped items to object's inventory
 	local inv = digger and digger:get_inventory()
 	local give_item
-	if (not node_drop or creative_mode) and inv then
+	if creative_mode and inv then
 		give_item = function(item)
 			return inv:add_item("main", item)
 		end
@@ -651,13 +623,12 @@ function core.node_dig(pos, node, digger)
 	local diggername = user_name(digger)
 	local log = make_log(diggername)
 	local def = core.registered_nodes[node.name]
-	-- Copy pos because the callback could modify it
 	if def and (not def.diggable or
-			(def.can_dig and not def.can_dig(vector.new(pos), digger))) then
+			(def.can_dig and not def.can_dig(pos, digger))) then
 		log("info", diggername .. " tried to dig "
 			.. node.name .. " which is not diggable "
 			.. core.pos_to_string(pos))
-		return false
+		return
 	end
 
 	if core.is_protected(pos, diggername) then
@@ -666,7 +637,7 @@ function core.node_dig(pos, node, digger)
 				.. " at protected position "
 				.. core.pos_to_string(pos))
 		core.record_protection_violation(pos, diggername)
-		return false
+		return
 	end
 
 	log('action', diggername .. " digs "
@@ -683,13 +654,13 @@ function core.node_dig(pos, node, digger)
 			wielded = wdef.after_use(wielded, digger, node, dp) or wielded
 		else
 			-- Wear out tool
-			if not core.is_creative_enabled(diggername) then
+			if not creative_mode then
 				wielded:add_wear(dp.wear)
 				if wielded:get_count() == 0 and wdef.sound and wdef.sound.breaks then
 					core.sound_play(wdef.sound.breaks, {
 						pos = pos,
 						gain = 0.5
-					}, true)
+					})
 				end
 			end
 		end
@@ -713,21 +684,13 @@ function core.node_dig(pos, node, digger)
 	-- Handle drops
 	core.handle_node_drops(pos, drops, digger)
 
-	local oldmetadata = nil
+	local oldmetadata
 	if def and def.after_dig_node then
 		oldmetadata = core.get_meta(pos):to_table()
 	end
 
 	-- Remove node and update
 	core.remove_node(pos)
-
-	-- Play sound if it was done by a player
-	if diggername ~= "" and def and def.sounds and def.sounds.dug then
-		core.sound_play(def.sounds.dug, {
-			pos = pos,
-			exclude_player = diggername,
-		}, true)
-	end
 
 	-- Run callback
 	if def and def.after_dig_node then
@@ -749,8 +712,6 @@ function core.node_dig(pos, node, digger)
 		local node_copy = {name=node.name, param1=node.param1, param2=node.param2}
 		callback(pos_copy, node_copy, digger)
 	end
-
-	return true
 end
 
 function core.itemstring_with_palette(item, palette_index)
@@ -778,8 +739,6 @@ end
 -- Item definition defaults
 --
 
-local default_stack_max = tonumber(core.settings:get("default_stack_max")) or 64
-
 core.nodedef_default = {
 	-- Item properties
 	type="node",
@@ -789,7 +748,7 @@ core.nodedef_default = {
 	inventory_image = "",
 	wield_image = "",
 	wield_scale = {x=1,y=1,z=1},
-	stack_max = default_stack_max,
+	stack_max = 64,
 	usable = false,
 	liquids_pointable = false,
 	tool_capabilities = nil,
@@ -807,6 +766,10 @@ core.nodedef_default = {
 
 	on_receive_fields = nil,
 
+	on_metadata_inventory_move = core.node_metadata_inventory_move_allow_all,
+	on_metadata_inventory_offer = core.node_metadata_inventory_offer_allow_all,
+	on_metadata_inventory_take = core.node_metadata_inventory_take_allow_all,
+
 	-- Node properties
 	drawtype = "normal",
 	visual_scale = 1.0,
@@ -817,6 +780,7 @@ core.nodedef_default = {
 	--	{name="", backface_culling=true},
 	--	{name="", backface_culling=true},
 	--},
+	alpha = 255,
 	post_effect_color = {a=0, r=0, g=0, b=0},
 	paramtype = "none",
 	paramtype2 = "none",
@@ -848,7 +812,7 @@ core.craftitemdef_default = {
 	inventory_image = "",
 	wield_image = "",
 	wield_scale = {x=1,y=1,z=1},
-	stack_max = default_stack_max,
+	stack_max = 64,
 	liquids_pointable = false,
 	tool_capabilities = nil,
 
@@ -886,7 +850,7 @@ core.noneitemdef_default = {  -- This is used for the hand and unknown items
 	inventory_image = "",
 	wield_image = "",
 	wield_scale = {x=1,y=1,z=1},
-	stack_max = default_stack_max,
+	stack_max = 64,
 	liquids_pointable = false,
 	tool_capabilities = nil,
 

@@ -20,11 +20,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "numeric.h"
 
 #include "log.h"
-#include "constants.h" // BS, MAP_BLOCKSIZE
-#include "noise.h" // PseudoRandom, PcgRandom
-#include "threading/mutex_auto_lock.h"
-#include <cstring>
-#include <cmath>
+#include "../constants.h" // BS, MAP_BLOCKSIZE
+#include "../noise.h" // PseudoRandom, PcgRandom
+#include "../threading/mutex_auto_lock.h"
+#include <string.h>
 
 
 // myrand
@@ -108,7 +107,7 @@ bool isBlockInSight(v3s16 blockpos_b, v3f camera_pos, v3f camera_dir,
 {
 	// Maximum radius of a block.  The magic number is
 	// sqrt(3.0) / 2.0 in literal form.
-	static constexpr const f32 block_max_radius = 0.866025403784f * MAP_BLOCKSIZE * BS;
+	const f32 block_max_radius = 0.866025403784 * MAP_BLOCKSIZE * BS;
 
 	v3s16 blockpos_nodes = blockpos_b * MAP_BLOCKSIZE;
 
@@ -123,18 +122,18 @@ bool isBlockInSight(v3s16 blockpos_b, v3f camera_pos, v3f camera_dir,
 	v3f blockpos_relative = blockpos - camera_pos;
 
 	// Total distance
-	f32 d = blockpos_relative.getLength();
+	f32 d = MYMAX(0, blockpos_relative.getLength() - block_max_radius);
 
-	if (distance_ptr)
+	if(distance_ptr)
 		*distance_ptr = d;
 
 	// If block is far away, it's not in sight
-	if (d > range + block_max_radius)
+	if(d > range)
 		return false;
 
 	// If block is (nearly) touching the camera, don't
 	// bother validating further (that is, render it anyway)
-	if (d <= block_max_radius)
+	if(d == 0)
 		return true;
 
 	// Adjust camera position, for purposes of computing the angle,
@@ -157,55 +156,8 @@ bool isBlockInSight(v3s16 blockpos_b, v3f camera_pos, v3f camera_dir,
 	// HOTFIX: use sligthly increased angle (+10%) to fix too agressive
 	// culling. Somebody have to find out whats wrong with the math here.
 	// Previous value: camera_fov / 2
-	if (cosangle < std::cos(camera_fov * 0.55f))
+	if(cosangle < cos(camera_fov * 0.55))
 		return false;
 
 	return true;
-}
-
-s16 adjustDist(s16 dist, float zoom_fov)
-{
-	// 1.775 ~= 72 * PI / 180 * 1.4, the default FOV on the client.
-	// The heuristic threshold for zooming is half of that.
-	static constexpr const float threshold_fov = 1.775f / 2.0f;
-	if (zoom_fov < 0.001f || zoom_fov > threshold_fov)
-		return dist;
-
-	return std::round(dist * std::cbrt((1.0f - std::cos(threshold_fov)) /
-		(1.0f - std::cos(zoom_fov / 2.0f))));
-}
-
-void setPitchYawRollRad(core::matrix4 &m, const v3f &rot)
-{
-	f64 a1 = rot.Z, a2 = rot.X, a3 = rot.Y;
-	f64 c1 = cos(a1), s1 = sin(a1);
-	f64 c2 = cos(a2), s2 = sin(a2);
-	f64 c3 = cos(a3), s3 = sin(a3);
-	f32 *M = m.pointer();
-
-	M[0] = s1 * s2 * s3 + c1 * c3;
-	M[1] = s1 * c2;
-	M[2] = s1 * s2 * c3 - c1 * s3;
-
-	M[4] = c1 * s2 * s3 - s1 * c3;
-	M[5] = c1 * c2;
-	M[6] = c1 * s2 * c3 + s1 * s3;
-
-	M[8] = c2 * s3;
-	M[9] = -s2;
-	M[10] = c2 * c3;
-}
-
-v3f getPitchYawRollRad(const core::matrix4 &m)
-{
-	const f32 *M = m.pointer();
-
-	f64 a1 = atan2(M[1], M[5]);
-	f32 c2 = std::sqrt((f64)M[10]*M[10] + (f64)M[8]*M[8]);
-	f32 a2 = atan2f(-M[9], c2);
-	f64 c1 = cos(a1);
-	f64 s1 = sin(a1);
-	f32 a3 = atan2f(s1*M[6] - c1*M[2], c1*M[0] - s1*M[4]);
-
-	return v3f(a2, a3, a1);
 }

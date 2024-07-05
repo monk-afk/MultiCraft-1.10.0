@@ -121,8 +121,15 @@ function core.serialize(x)
 		elseif tp == "function" then
 			return string.format("loadstring(%q)", string.dump(x))
 		elseif tp == "number"   then
-			-- Serialize numbers reversibly with string.format
-			return string.format("%.17g", x)
+			-- Serialize integers with string.format to prevent
+			-- scientific notation, which doesn't preserve
+			-- precision and breaks things like node position
+			-- hashes.  Serialize floats normally.
+			if math.floor(x) == x then
+				return string.format("%d", x)
+			else
+				return tostring(x)
+			end
 		elseif tp == "table" then
 			local vals = {}
 			local idx_dumped = {}

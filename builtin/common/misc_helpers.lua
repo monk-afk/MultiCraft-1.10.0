@@ -20,8 +20,6 @@ local function basic_dump(o)
 	-- dump's output is intended for humans.
 	--elseif tp == "function" then
 	--	return string.format("loadstring(%q)", string.dump(o))
-	elseif tp == "userdata" then
-		return tostring(o)
 	else
 		return string.format("<%s>", tp)
 	end
@@ -244,22 +242,13 @@ function math.factorial(x)
 	return v
 end
 
-
-function math.round(x)
-	if x >= 0 then
-		return math.floor(x + 0.5)
-	end
-	return math.ceil(x - 0.5)
-end
-
-
 function core.formspec_escape(text)
 	if text ~= nil then
-		text = text:gsub("\\", "\\\\")
-		text = text:gsub("%]", "\\]")
-		text = text:gsub("%[", "\\[")
-		text = text:gsub(";", "\\;")
-		text = text:gsub(",", "\\,")
+		text = string.gsub(text,"\\","\\\\")
+		text = string.gsub(text,"%]","\\]")
+		text = string.gsub(text,"%[","\\[")
+		text = string.gsub(text,";","\\;")
+		text = string.gsub(text,",","\\,")
 	end
 	return text
 end
@@ -355,12 +344,18 @@ if INIT == "game" then
 --Wrapper for rotate_and_place() to check for sneak and assume Creative mode
 --implies infinite stacks when performing a 6d rotation.
 --------------------------------------------------------------------------------
+	local creative_mode_cache = core.settings:get_bool("creative_mode")
+	local function is_creative(name)
+		return creative_mode_cache or
+				core.check_player_privs(name, {creative = true})
+	end
+
 	core.rotate_node = function(itemstack, placer, pointed_thing)
 		local name = placer and placer:get_player_name() or ""
 		local invert_wall = placer and placer:get_player_control().sneak or false
 		return core.rotate_and_place(itemstack, placer, pointed_thing,
-			core.is_creative_enabled(name),
-			{invert_wall = invert_wall}, true)
+				is_creative(name),
+				{invert_wall = invert_wall}, true)
 	end
 end
 
@@ -449,7 +444,6 @@ function core.string_to_pos(value)
 	end
 	return nil
 end
-
 
 --------------------------------------------------------------------------------
 function core.string_to_area(value)
@@ -605,46 +599,6 @@ function core.strip_colors(str)
 	return (str:gsub(ESCAPE_CHAR .. "%([bc]@[^)]+%)", ""))
 end
 
-function core.translate(textdomain, str, ...)
-	local start_seq
-	if textdomain == "" then
-		start_seq = ESCAPE_CHAR .. "T"
-	else
-		start_seq = ESCAPE_CHAR .. "(T@" .. textdomain .. ")"
-	end
-	local arg = {n=select('#', ...), ...}
-	local end_seq = ESCAPE_CHAR .. "E"
-	local arg_index = 1
-	local translated = str:gsub("@(.)", function(matched)
-		local c = string.byte(matched)
-		if string.byte("1") <= c and c <= string.byte("9") then
-			local a = c - string.byte("0")
-			if a ~= arg_index then
-				error("Escape sequences in string given to core.translate " ..
-					"are not in the correct order: got @" .. matched ..
-					"but expected @" .. tostring(arg_index))
-			end
-			if a > arg.n then
-				error("Not enough arguments provided to core.translate")
-			end
-			arg_index = arg_index + 1
-			return ESCAPE_CHAR .. "F" .. arg[a] .. ESCAPE_CHAR .. "E"
-		elseif matched == "n" then
-			return "\n"
-		else
-			return matched
-		end
-	end)
-	if arg_index < arg.n + 1 then
-		error("Too many arguments provided to core.translate")
-	end
-	return start_seq .. translated .. end_seq
-end
-
-function core.get_translator(textdomain)
-	return function(str, ...) return core.translate(textdomain or "", str, ...) end
-end
-
 --------------------------------------------------------------------------------
 -- Returns the exact coordinate of a pointed surface
 --------------------------------------------------------------------------------
@@ -688,7 +642,7 @@ function core.string_to_privs(str, delim)
 	assert(type(str) == "string")
 	delim = delim or ','
 	local privs = {}
-	for _, priv in pairs(string.split(str, delim)) do
+	for _, priv in pairs(str:split(delim)) do
 		privs[priv:trim()] = true
 	end
 	return privs
@@ -704,8 +658,4 @@ function core.privs_to_string(privs, delim)
 		end
 	end
 	return table.concat(list, delim)
-end
-
-function core.is_nan(number)
-	return number ~= number
 end

@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef L_SERVER_H_
+#define L_SERVER_H_
 
 #include "lua_api/l_base.h"
 
@@ -70,12 +71,6 @@ private:
 	// sound_fade(handle, step, gain)
 	static int l_sound_fade(lua_State *L);
 
-	// dynamic_add_media(filepath)
-	static int l_dynamic_add_media_raw(lua_State *L);
-
-	// static_add_media(filename, filepath)
-	static int l_static_add_media(lua_State *L);
-
 	// get_player_privs(name, text)
 	static int l_get_player_privs(lua_State *L);
 
@@ -115,3 +110,5 @@ private:
 public:
 	static void Initialize(lua_State *L, int top);
 };
+
+#endif /* L_SERVER_H_ */

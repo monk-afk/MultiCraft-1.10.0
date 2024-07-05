@@ -17,11 +17,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef S_MAINMENU_H_
+#define S_MAINMENU_H_
 
 #include "cpp_api/s_base.h"
 #include "util/string.h"
-#include "gui/guiMainMenu.h"
+#include "../guiMainMenu.h"
 
 class ScriptApiMainMenu : virtual public ScriptApiBase {
 public:
@@ -43,3 +44,5 @@ public:
 	 */
 	void handleMainMenuButtons(const StringMap &fields);
 };
+
+#endif /* S_MAINMENU_H_ */

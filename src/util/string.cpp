@@ -24,17 +24,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "hex.h"
 #include "porting.h"
-#include "translation.h"
 
 #include <algorithm>
-#include <array>
 #include <sstream>
 #include <iomanip>
 #include <map>
 
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-	#include <SDL.h>
-#elif !defined(_WIN32)
+#ifndef _WIN32
 	#include <iconv.h>
 #else
 	#define _WIN32_WINNT 0x0501
@@ -46,64 +42,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 	#define BSD_ICONV_USED
 #endif
 
-static bool parseHexColorString(const std::string &value, video::SColor &color,
-		unsigned char default_alpha = 0xff);
+static bool parseHexColorString(const std::string &value, video::SColor &color);
 static bool parseNamedColorString(const std::string &value, video::SColor &color);
 
-#if defined(__ANDROID__) || defined(__APPLE__)
-// On Android iconv disagrees how big a wchar_t is for whatever reason
-const char *DEFAULT_ENCODING = "UTF-32LE";
-#else
-const char *DEFAULT_ENCODING = "WCHAR_T";
-#endif
+#ifndef _WIN32
 
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-
-std::wstring utf8_to_wide(const std::string &input)
-{
-#if defined(__ANDROID__) || defined(__APPLE__)
-	SANITY_CHECK(sizeof(wchar_t) == 4);
-#endif
-
-	const char *inbuf = input.c_str();
-	size_t inbuf_size = input.size() + 1;
-
-	char *outbuf = SDL_iconv_string(DEFAULT_ENCODING, "UTF-8", inbuf, inbuf_size);
-
-	if (!outbuf)
-		return L"";
-
-	std::wstring out((wchar_t*)outbuf);
-	SDL_free(outbuf);
-
-	return out;
-}
-
-std::string wide_to_utf8(const std::wstring &input)
-{
-#if defined(__ANDROID__) || defined(__APPLE__)
-	SANITY_CHECK(sizeof(wchar_t) == 4);
-#endif
-
-	const char *inbuf = (const char*)(input.c_str());
-	size_t inbuf_size = (input.size() + 1) * sizeof(wchar_t);
-
-	char *outbuf = SDL_iconv_string("UTF-8", DEFAULT_ENCODING, inbuf, inbuf_size);
-
-	if (!outbuf)
-		return "";
-
-	std::string out(outbuf);
-	SDL_free(outbuf);
-
-	return out;
-}
-
-#elif !defined(_WIN32)
-
-static bool convert(const char *to, const char *from, char *outbuf,
-		size_t *outbuf_size, char *inbuf, size_t inbuf_size)
-{
+bool convert(const char *to, const char *from, char *outbuf,
+             size_t outbuf_size, char *inbuf, size_t inbuf_size) {
 	iconv_t cd = iconv_open(to, from);
 
 #ifdef BSD_ICONV_USED
@@ -111,14 +56,15 @@ static bool convert(const char *to, const char *from, char *outbuf,
 #else
 	char *inbuf_ptr = inbuf;
 #endif
+
 	char *outbuf_ptr = outbuf;
 
 	size_t *inbuf_left_ptr = &inbuf_size;
+	size_t *outbuf_left_ptr = &outbuf_size;
 
-	const size_t old_outbuf_size = *outbuf_size;
 	size_t old_size = inbuf_size;
 	while (inbuf_size > 0) {
-		iconv(cd, &inbuf_ptr, inbuf_left_ptr, &outbuf_ptr, outbuf_size);
+		iconv(cd, &inbuf_ptr, inbuf_left_ptr, &outbuf_ptr, outbuf_left_ptr);
 		if (inbuf_size == old_size) {
 			iconv_close(cd);
 			return false;
@@ -127,65 +73,74 @@ static bool convert(const char *to, const char *from, char *outbuf,
 	}
 
 	iconv_close(cd);
-	*outbuf_size = old_outbuf_size - *outbuf_size;
 	return true;
 }
 
-std::wstring utf8_to_wide(const std::string &input)
-{
-	const size_t inbuf_size = input.length();
+#if defined(__ANDROID__) || defined(__IOS__)
+// Android and iOS needs manual caring to support the full character set possible with wchar_t
+const char *to = "UTF-32LE";
+#else
+const char *to = "WCHAR_T";
+#endif
+
+std::wstring utf8_to_wide(const std::string &input) {
+	size_t inbuf_size = input.length() + 1;
 	// maximum possible size, every character is sizeof(wchar_t) bytes
-	size_t outbuf_size = input.length() * sizeof(wchar_t);
+	size_t outbuf_size = (input.length() + 1) * sizeof(wchar_t);
 
-	char *inbuf = new char[inbuf_size]; // intentionally NOT null-terminated
+	char *inbuf = new char[inbuf_size];
 	memcpy(inbuf, input.c_str(), inbuf_size);
-	std::wstring out;
-	out.resize(outbuf_size / sizeof(wchar_t));
+	char *outbuf = new char[outbuf_size];
+	memset(outbuf, 0, outbuf_size);
 
-#if defined(__ANDROID__) || defined(__APPLE__)
+#if defined(__ANDROID__) || defined(__IOS__)
+	// Android and iOS needs manual caring to support the full character set possible with wchar_t
 	SANITY_CHECK(sizeof(wchar_t) == 4);
 #endif
 
-	char *outbuf = reinterpret_cast<char*>(&out[0]);
-	if (!convert(DEFAULT_ENCODING, "UTF-8", outbuf, &outbuf_size, inbuf, inbuf_size)) {
+	if (!convert(to, "UTF-8", outbuf, outbuf_size, inbuf, inbuf_size)) {
 		infostream << "Couldn't convert UTF-8 string 0x" << hex_encode(input)
-			<< " into wstring" << std::endl;
+		           << " into wstring" << std::endl;
 		delete[] inbuf;
+		delete[] outbuf;
 		return L"<invalid UTF-8 string>";
 	}
-	delete[] inbuf;
+	std::wstring out((wchar_t *)outbuf);
 
-	out.resize(outbuf_size / sizeof(wchar_t));
+	delete[] inbuf;
+	delete[] outbuf;
+
 	return out;
 }
 
-std::string wide_to_utf8(const std::wstring &input)
-{
-	const size_t inbuf_size = input.length() * sizeof(wchar_t);
-	// maximum possible size: utf-8 encodes codepoints using 1 up to 4 bytes
-	size_t outbuf_size = input.length() * 4;
+std::string wide_to_utf8(const std::wstring &input) {
+	size_t inbuf_size = (input.length() + 1) * sizeof(wchar_t);
+	// maximum possible size: utf-8 encodes codepoints using 1 up to 6 bytes
+	size_t outbuf_size = (input.length() + 1) * 6;
 
-	char *inbuf = new char[inbuf_size]; // intentionally NOT null-terminated
+	char *inbuf = new char[inbuf_size];
 	memcpy(inbuf, input.c_str(), inbuf_size);
-	std::string out;
-	out.resize(outbuf_size);
+	char *outbuf = new char[outbuf_size];
+	memset(outbuf, 0, outbuf_size);
 
-	if (!convert("UTF-8", DEFAULT_ENCODING, &out[0], &outbuf_size, inbuf, inbuf_size)) {
+	if (!convert("UTF-8", to, outbuf, outbuf_size, inbuf, inbuf_size)) {
 		infostream << "Couldn't convert wstring 0x" << hex_encode(inbuf, inbuf_size)
 			<< " into UTF-8 string" << std::endl;
 		delete[] inbuf;
-		return "<invalid wide string>";
+		delete[] outbuf;
+		return "<invalid wstring>";
 	}
-	delete[] inbuf;
+	std::string out(outbuf);
 
-	out.resize(outbuf_size);
+	delete[] inbuf;
+	delete[] outbuf;
+
 	return out;
 }
 
 #else // _WIN32
 
-std::wstring utf8_to_wide(const std::string &input)
-{
+std::wstring utf8_to_wide(const std::string &input) {
 	size_t outbuf_size = input.size() + 1;
 	wchar_t *outbuf = new wchar_t[outbuf_size];
 	memset(outbuf, 0, outbuf_size * sizeof(wchar_t));
@@ -196,8 +151,7 @@ std::wstring utf8_to_wide(const std::string &input)
 	return out;
 }
 
-std::string wide_to_utf8(const std::wstring &input)
-{
+std::string wide_to_utf8(const std::wstring &input) {
 	size_t outbuf_size = (input.size() + 1) * 6;
 	char *outbuf = new char[outbuf_size];
 	memset(outbuf, 0, outbuf_size);
@@ -210,18 +164,73 @@ std::string wide_to_utf8(const std::wstring &input)
 
 #endif // _WIN32
 
-wchar_t *utf8_to_wide_c(const char *str)
-{
+// You must free the returned string!
+// The returned string is allocated using new
+wchar_t *utf8_to_wide_c(const char *str) {
 	std::wstring ret = utf8_to_wide(std::string(str));
 	size_t len = ret.length();
 	wchar_t *ret_c = new wchar_t[len + 1];
-	memcpy(ret_c, ret.c_str(), (len + 1) * sizeof(wchar_t));
+	memset(ret_c, 0, (len + 1) * sizeof(wchar_t));
+	memcpy(ret_c, ret.c_str(), len * sizeof(wchar_t));
 	return ret_c;
 }
 
+// You must free the returned string!
+// The returned string is allocated using new
+wchar_t *narrow_to_wide_c(const char *str) {
+	wchar_t *nstr = nullptr;
+#if defined(_WIN32)
+	int nResult = MultiByteToWideChar(CP_UTF8, 0, (LPCSTR) str, -1, 0, 0);
+	if (nResult == 0) {
+		errorstream<<"gettext: MultiByteToWideChar returned null"<<std::endl;
+	} else {
+		nstr = new wchar_t[nResult];
+		MultiByteToWideChar(CP_UTF8, 0, (LPCSTR) str, -1, (WCHAR *) nstr, nResult);
+	}
+#else
+	size_t len = strlen(str);
+	nstr = new wchar_t[len + 1];
 
-std::string urlencode(const std::string &str)
-{
+	std::wstring intermediate = narrow_to_wide(str);
+	memset(nstr, 0, (len + 1) * sizeof(wchar_t));
+	memcpy(nstr, intermediate.c_str(), len * sizeof(wchar_t));
+#endif
+
+	return nstr;
+}
+
+std::wstring narrow_to_wide(const std::string &mbs) {
+#if defined(__ANDROID__) || defined(__IOS__)
+	return utf8_to_wide(mbs);
+#else
+	size_t wcl = mbs.size();
+	Buffer<wchar_t> wcs(wcl + 1);
+	size_t len = mbstowcs(*wcs, mbs.c_str(), wcl);
+	if (len == (size_t)(-1))
+		return L"<invalid multibyte string>";
+	wcs[len] = 0;
+	return *wcs;
+#endif
+}
+
+
+std::string wide_to_narrow(const std::wstring &wcs) {
+#if defined(__ANDROID__) || defined(__IOS__)
+	return wide_to_utf8(wcs);
+#else
+	size_t mbl = wcs.size() * 4;
+	SharedBuffer<char> mbs(mbl+1);
+	size_t len = wcstombs(*mbs, wcs.c_str(), mbl);
+	if (len == (size_t)(-1))
+		return "Character conversion failed!";
+
+	mbs[len] = 0;
+	return *mbs;
+#endif
+}
+
+
+std::string urlencode(const std::string &str) {
 	// Encodes non-unreserved URI characters by a percent sign
 	// followed by two hex digits. See RFC 3986, section 2.3.
 	static const char url_hex_chars[] = "0123456789ABCDEF";
@@ -231,22 +240,21 @@ std::string urlencode(const std::string &str)
 			oss << c;
 		} else {
 			oss << "%"
-				<< url_hex_chars[(c & 0xf0) >> 4]
-				<< url_hex_chars[c & 0x0f];
+			    << url_hex_chars[(c & 0xf0) >> 4]
+			    << url_hex_chars[c & 0x0f];
 		}
 	}
 	return oss.str();
 }
 
-std::string urldecode(const std::string &str)
-{
+std::string urldecode(const std::string &str) {
 	// Inverse of urlencode
 	std::ostringstream oss(std::ios::binary);
 	for (u32 i = 0; i < str.size(); i++) {
 		unsigned char highvalue, lowvalue;
 		if (str[i] == '%' &&
-				hex_digit_decode(str[i+1], highvalue) &&
-				hex_digit_decode(str[i+2], lowvalue)) {
+		    hex_digit_decode(str[i+1], highvalue) &&
+		    hex_digit_decode(str[i+2], lowvalue)) {
 			oss << (char) ((highvalue << 4) | lowvalue);
 			i += 2;
 		} else {
@@ -256,8 +264,7 @@ std::string urldecode(const std::string &str)
 	return oss.str();
 }
 
-u32 readFlagString(std::string str, const FlagDesc *flagdesc, u32 *flagmask)
-{
+u32 readFlagString(std::string str, const FlagDesc *flagdesc, u32 *flagmask) {
 	u32 result = 0;
 	u32 mask = 0;
 	char *s = &str[0];
@@ -292,8 +299,7 @@ u32 readFlagString(std::string str, const FlagDesc *flagdesc, u32 *flagmask)
 	return result;
 }
 
-std::string writeFlagString(u32 flags, const FlagDesc *flagdesc, u32 flagmask)
-{
+std::string writeFlagString(u32 flags, const FlagDesc *flagdesc, u32 flagmask) {
 	std::string result;
 
 	for (int i = 0; flagdesc[i].name; i++) {
@@ -313,8 +319,7 @@ std::string writeFlagString(u32 flags, const FlagDesc *flagdesc, u32 flagmask)
 	return result;
 }
 
-size_t mystrlcpy(char *dst, const char *src, size_t size)
-{
+size_t mystrlcpy(char *dst, const char *src, size_t size) {
 	size_t srclen  = strlen(src) + 1;
 	size_t copylen = MYMIN(srclen, size);
 
@@ -326,8 +331,7 @@ size_t mystrlcpy(char *dst, const char *src, size_t size)
 	return srclen;
 }
 
-char *mystrtok_r(char *s, const char *sep, char **lasts)
-{
+char *mystrtok_r(char *s, const char *sep, char **lasts) {
 	char *t;
 
 	if (!s)
@@ -352,8 +356,7 @@ char *mystrtok_r(char *s, const char *sep, char **lasts)
 	return s;
 }
 
-u64 read_seed(const char *str)
-{
+u64 read_seed(const char *str) {
 	char *endptr;
 	u64 num;
 
@@ -368,13 +371,11 @@ u64 read_seed(const char *str)
 	return num;
 }
 
-bool parseColorString(const std::string &value, video::SColor &color, bool quiet,
-		unsigned char default_alpha)
-{
+bool parseColorString(const std::string &value, video::SColor &color, bool quiet) {
 	bool success;
 
 	if (value[0] == '#')
-		success = parseHexColorString(value, color, default_alpha);
+		success = parseHexColorString(value, color);
 	else
 		success = parseNamedColorString(value, color);
 
@@ -384,10 +385,8 @@ bool parseColorString(const std::string &value, video::SColor &color, bool quiet
 	return success;
 }
 
-static bool parseHexColorString(const std::string &value, video::SColor &color,
-		unsigned char default_alpha)
-{
-	unsigned char components[] = { 0x00, 0x00, 0x00, default_alpha }; // R,G,B,A
+static bool parseHexColorString(const std::string &value, video::SColor &color) {
+	unsigned char components[] = { 0x00, 0x00, 0x00, 0xff }; // R,G,B,A
 
 	if (value[0] != '#')
 		return false;
@@ -416,7 +415,7 @@ static bool parseHexColorString(const std::string &value, video::SColor &color,
 		} else {
 			unsigned char d1, d2;
 			if (!hex_digit_decode(value[pos], d1) ||
-					!hex_digit_decode(value[pos+1], d2)) {
+			    !hex_digit_decode(value[pos+1], d2)) {
 				success = false;
 				break;
 			}
@@ -440,8 +439,7 @@ struct ColorContainer {
 	std::map<const std::string, u32> colors;
 };
 
-ColorContainer::ColorContainer()
-{
+ColorContainer::ColorContainer() {
 	colors["aliceblue"]              = 0xf0f8ff;
 	colors["antiquewhite"]           = 0xfaebd7;
 	colors["aqua"]                   = 0x00ffff;
@@ -594,8 +592,7 @@ ColorContainer::ColorContainer()
 
 static const ColorContainer named_colors;
 
-static bool parseNamedColorString(const std::string &value, video::SColor &color)
-{
+static bool parseNamedColorString(const std::string &value, video::SColor &color) {
 	std::string color_name;
 	std::string alpha_string;
 
@@ -612,7 +609,7 @@ static bool parseNamedColorString(const std::string &value, video::SColor &color
 		color_name = value;
 	}
 
-	color_name = lowercase(color_name);
+	color_name = lowercase(value);
 
 	std::map<const std::string, unsigned>::const_iterator it;
 	it = named_colors.colors.find(color_name);
@@ -634,7 +631,7 @@ static bool parseNamedColorString(const std::string &value, video::SColor &color
 
 		unsigned char d1, d2;
 		if (!hex_digit_decode(alpha_string.at(0), d1)
-				|| !hex_digit_decode(alpha_string.at(1), d2))
+		    || !hex_digit_decode(alpha_string.at(1), d2))
 			return false;
 		color_temp |= ((d1 & 0xf) << 4 | (d2 & 0xf)) << 24;
 	} else {
@@ -646,294 +643,6 @@ static bool parseNamedColorString(const std::string &value, video::SColor &color
 	return true;
 }
 
-void str_replace(std::string &str, char from, char to)
-{
+void str_replace(std::string &str, char from, char to) {
 	std::replace(str.begin(), str.end(), from, to);
-}
-
-/* Translated strings have the following format:
- * \x1bT marks the beginning of a translated string
- * \x1bE marks its end
- *
- * \x1bF marks the beginning of an argument, and \x1bE its end.
- *
- * Arguments are *not* translated, as they may contain escape codes.
- * Thus, if you want a translated argument, it should be inside \x1bT/\x1bE tags as well.
- *
- * This representation is chosen so that clients ignoring escape codes will
- * see untranslated strings.
- *
- * For instance, suppose we have a string such as "@1 Wool" with the argument "White"
- * The string will be sent as "\x1bT\x1bF\x1bTWhite\x1bE\x1bE Wool\x1bE"
- * To translate this string, we extract what is inside \x1bT/\x1bE tags.
- * When we notice the \x1bF tag, we recursively extract what is there up to the \x1bE end tag,
- * translating it as well.
- * We get the argument "White", translated, and create a template string with "@1" instead of it.
- * We finally get the template "@1 Wool" that was used in the beginning, which we translate
- * before filling it again.
- */
-
-void translate_all(const std::wstring &s, size_t &i,
-		Translations *translations, std::wstring &res);
-
-void translate_string(const std::wstring &s, Translations *translations,
-		const std::wstring &textdomain, size_t &i, std::wstring &res)
-{
-	std::wostringstream output;
-	std::vector<std::wstring> args;
-	int arg_number = 1;
-	while (i < s.length()) {
-		// Not an escape sequence: just add the character.
-		if (s[i] != '\x1b') {
-			output.put(s[i]);
-			// The character is a literal '@'; add it twice
-			// so that it is not mistaken for an argument.
-			if (s[i] == L'@')
-				output.put(L'@');
-			++i;
-			continue;
-		}
-
-		// We have an escape sequence: locate it and its data
-		// It is either a single character, or it begins with '('
-		// and extends up to the following ')', with '\' as an escape character.
-		++i;
-		size_t start_index = i;
-		size_t length;
-		if (i == s.length()) {
-			length = 0;
-		} else if (s[i] == L'(') {
-			++i;
-			++start_index;
-			while (i < s.length() && s[i] != L')') {
-				if (s[i] == L'\\')
-					++i;
-				++i;
-			}
-			length = i - start_index;
-			++i;
-			if (i > s.length())
-				i = s.length();
-		} else {
-			++i;
-			length = 1;
-		}
-		std::wstring escape_sequence(s, start_index, length);
-
-		// The escape sequence is now reconstructed.
-		std::vector<std::wstring> parts = split(escape_sequence, L'@');
-		if (parts[0] == L"E") {
-			// "End of translation" escape sequence. We are done locating the string to translate.
-			break;
-		} else if (parts[0] == L"F") {
-			// "Start of argument" escape sequence.
-			// Recursively translate the argument, and add it to the argument list.
-			// Add an "@n" instead of the argument to the template to translate.
-			if (arg_number >= 10) {
-				errorstream << "Ignoring too many arguments to translation" << std::endl;
-				std::wstring arg;
-				translate_all(s, i, translations, arg);
-				args.push_back(arg);
-				continue;
-			}
-			output.put(L'@');
-			output << arg_number;
-			++arg_number;
-			std::wstring arg;
-			translate_all(s, i, translations, arg);
-			args.push_back(arg);
-		} else {
-			// This is an escape sequence *inside* the template string to translate itself.
-			// This should not happen, show an error message.
-			errorstream << "Ignoring escape sequence '"
-				<< wide_to_utf8(escape_sequence) << "' in translation" << std::endl;
-		}
-	}
-
-	std::wstring toutput;
-	// Translate the template.
-	if (translations != nullptr)
-		toutput = translations->getTranslation(
-				textdomain, output.str());
-	else
-		toutput = output.str();
-
-	// Put back the arguments in the translated template.
-	std::wostringstream result;
-	size_t j = 0;
-	while (j < toutput.length()) {
-		// Normal character, add it to output and continue.
-		if (toutput[j] != L'@' || j == toutput.length() - 1) {
-			result.put(toutput[j]);
-			++j;
-			continue;
-		}
-
-		++j;
-		// Literal escape for '@'.
-		if (toutput[j] == L'@') {
-			result.put(L'@');
-			++j;
-			continue;
-		}
-
-		// Here we have an argument; get its index and add the translated argument to the output.
-		int arg_index = toutput[j] - L'1';
-		++j;
-		if (0 <= arg_index && (size_t)arg_index < args.size()) {
-			result << args[arg_index];
-		} else {
-			// This is not allowed: show an error message
-			errorstream << "Ignoring out-of-bounds argument escape sequence in translation" << std::endl;
-		}
-	}
-	res = result.str();
-}
-
-void translate_all(const std::wstring &s, size_t &i,
-		Translations *translations, std::wstring &res)
-{
-	std::wostringstream output;
-	while (i < s.length()) {
-		// Not an escape sequence: just add the character.
-		if (s[i] != '\x1b') {
-			output.put(s[i]);
-			++i;
-			continue;
-		}
-
-		// We have an escape sequence: locate it and its data
-		// It is either a single character, or it begins with '('
-		// and extends up to the following ')', with '\' as an escape character.
-		size_t escape_start = i;
-		++i;
-		size_t start_index = i;
-		size_t length;
-		if (i == s.length()) {
-			length = 0;
-		} else if (s[i] == L'(') {
-			++i;
-			++start_index;
-			while (i < s.length() && s[i] != L')') {
-				if (s[i] == L'\\') {
-					++i;
-				}
-				++i;
-			}
-			length = i - start_index;
-			++i;
-			if (i > s.length())
-				i = s.length();
-		} else {
-			++i;
-			length = 1;
-		}
-		std::wstring escape_sequence(s, start_index, length);
-
-		// The escape sequence is now reconstructed.
-		std::vector<std::wstring> parts = split(escape_sequence, L'@');
-		if (parts[0] == L"E") {
-			// "End of argument" escape sequence. Exit.
-			break;
-		} else if (parts[0] == L"T") {
-			// Beginning of translated string.
-			std::wstring textdomain;
-			if (parts.size() > 1)
-				textdomain = parts[1];
-			std::wstring translated;
-			translate_string(s, translations, textdomain, i, translated);
-			output << translated;
-		} else {
-			// Another escape sequence, such as colors. Preserve it.
-			output << std::wstring(s, escape_start, i - escape_start);
-		}
-	}
-
-	res = output.str();
-}
-
-// Translate string server side
-std::wstring translate_string(const std::wstring &s, Translations *translations)
-{
-	size_t i = 0;
-	std::wstring res;
-	translate_all(s, i, translations, res);
-	return res;
-}
-
-// Translate string client side
-std::wstring translate_string(const std::wstring &s)
-{
-#ifdef SERVER
-	return translate_string(s, nullptr);
-#else
-	return translate_string(s, g_client_translations);
-#endif
-}
-
-static const std::array<std::wstring, 22> disallowed_dir_names = {
-	// Problematic filenames from here:
-	// https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file#file-and-directory-names
-	L"CON",
-	L"PRN",
-	L"AUX",
-	L"NUL",
-	L"COM1",
-	L"COM2",
-	L"COM3",
-	L"COM4",
-	L"COM5",
-	L"COM6",
-	L"COM7",
-	L"COM8",
-	L"COM9",
-	L"LPT1",
-	L"LPT2",
-	L"LPT3",
-	L"LPT4",
-	L"LPT5",
-	L"LPT6",
-	L"LPT7",
-	L"LPT8",
-	L"LPT9",
-};
-
-/**
- * List of characters that are blacklisted from created directories
- */
-static const std::wstring disallowed_path_chars = L"<>:\"/\\|?*.";
-
-/**
- * Sanitize the name of a new directory. This consists of two stages:
- * 1. Check for 'reserved filenames' that can't be used on some filesystems
- *	and add a prefix to them
- * 2. Remove 'unsafe' characters from the name by replacing them with '_'
- */
-std::string sanitizeDirName(const std::string &str, const std::string &optional_prefix)
-{
-	std::wstring safe_name = utf8_to_wide(str);
-
-	for (std::wstring disallowed_name : disallowed_dir_names) {
-		if (str_equal(safe_name, disallowed_name, true)) {
-			safe_name = utf8_to_wide(optional_prefix) + safe_name;
-			break;
-		}
-	}
-
-	for (unsigned long i = 0; i < safe_name.length(); i++) {
-		bool is_valid = true;
-
-		// Unlikely, but control characters should always be blacklisted
-		if (safe_name[i] < 32) {
-			is_valid = false;
-		} else if (safe_name[i] < 128) {
-			is_valid = disallowed_path_chars.find_first_of(safe_name[i])
-					== std::wstring::npos;
-		}
-
-		if (!is_valid)
-			safe_name[i] = '_';
-	}
-
-	return wide_to_utf8(safe_name);
 }

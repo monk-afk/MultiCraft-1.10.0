@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef S_NODE_H_
+#define S_NODE_H_
 
 #include "irr_v3d.h"
 #include "cpp_api/s_base.h"
@@ -32,11 +33,11 @@ class ScriptApiNode
 		  public ScriptApiNodemeta
 {
 public:
-	ScriptApiNode() = default;
-	virtual ~ScriptApiNode() = default;
+	ScriptApiNode();
+	virtual ~ScriptApiNode();
 
 	bool node_on_punch(v3s16 p, MapNode node,
-			ServerActiveObject *puncher, const PointedThing &pointed);
+			ServerActiveObject *puncher, PointedThing pointed);
 	bool node_on_dig(v3s16 p, MapNode node,
 			ServerActiveObject *digger);
 	void node_on_construct(v3s16 p, MapNode node);
@@ -48,11 +49,16 @@ public:
 			const std::string &formname,
 			const StringMap &fields,
 			ServerActiveObject *sender);
+	void node_falling_update(v3s16 p);
+	void node_falling_update_single(v3s16 p);
 public:
 	static struct EnumString es_DrawType[];
 	static struct EnumString es_ContentParamType[];
 	static struct EnumString es_ContentParamType2[];
 	static struct EnumString es_LiquidType[];
 	static struct EnumString es_NodeBoxType[];
-	static struct EnumString es_TextureAlphaMode[];
 };
+
+
+
+#endif /* S_NODE_H_ */

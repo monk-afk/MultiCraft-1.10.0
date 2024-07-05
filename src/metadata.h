@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef METADATA_HEADER
+#define METADATA_HEADER
 
 #include "irr_v3d.h"
 #include <iostream>
@@ -26,9 +27,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 class Metadata
 {
-	bool m_modified = false;
 public:
-	virtual ~Metadata() = default;
+	virtual ~Metadata() {}
 
 	virtual void clear();
 	virtual bool empty() const;
@@ -46,18 +46,16 @@ public:
 	size_t size() const;
 	bool contains(const std::string &name) const;
 	const std::string &getString(const std::string &name, u16 recursion = 0) const;
-	bool getStringToRef(const std::string &name, std::string &str, u16 recursion = 0) const;
 	virtual bool setString(const std::string &name, const std::string &var);
-	inline bool removeString(const std::string &name) { return setString(name, ""); }
 	const StringMap &getStrings() const
 	{
 		return m_stringvars;
 	}
 	// Add support for variable names in values
 	const std::string &resolveString(const std::string &str, u16 recursion = 0) const;
-
-	inline bool isModified() const  { return m_modified; }
-	inline void setModified(bool v) { m_modified = v; }
 protected:
 	StringMap m_stringvars;
+
 };
+
+#endif

@@ -27,7 +27,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <json/json.h>
 #include "cpp_api/s_security.h"
 #include "porting.h"
-#include "convert_json.h"
 #include "debug.h"
 #include "log.h"
 #include "tool.h"
@@ -41,14 +40,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "util/sha1.h"
 #include <algorithm>
 
-#ifndef SERVER
-#include "client/renderingengine.h"
-#endif
-
 
 // log([level,] text)
 // Writes a line to the logger.
-// The one-argument version logs to LL_NONE.
+// The one-argument version logs to infostream.
 // The two-argument version accepts a log level.
 // Either the special case "deprecated" for deprecation notices, or any specified in
 // Logger::stringToLevel(name).
@@ -63,7 +58,7 @@ int ModApiUtil::l_log(lua_State *L)
 		std::string name = luaL_checkstring(L, 1);
 		text = luaL_checkstring(L, 2);
 		if (name == "deprecated") {
-			log_deprecated(L, text, 2);
+			log_deprecated(L, text);
 			return 0;
 		}
 		level = Logger::stringToLevel(name);
@@ -102,23 +97,17 @@ int ModApiUtil::l_parse_json(lua_State *L)
 	Json::Value root;
 
 	{
+		Json::Reader reader;
 		std::istringstream stream(jsonstr);
 
-		Json::CharReaderBuilder builder;
-		builder.settings_["collectComments"] = false;
-		std::string errs;
-
-		if (!Json::parseFromStream(builder, stream, &root, &errs)) {
-			errorstream << "Failed to parse json data " << errs << std::endl;
+		if (!reader.parse(stream, root)) {
+			errorstream << "Failed to parse json data "
+				<< reader.getFormattedErrorMessages();
 			size_t jlen = strlen(jsonstr);
 			if (jlen > 100) {
 				errorstream << "Data (" << jlen
-#ifdef NDEBUG
-					<< " bytes) not printed." << std::endl;
-#else
 					<< " bytes) printed to warningstream." << std::endl;
 				warningstream << "data: \"" << jsonstr << "\"" << std::endl;
-#endif
 			} else {
 				errorstream << "data: \"" << jsonstr << "\"" << std::endl;
 			}
@@ -143,7 +132,7 @@ int ModApiUtil::l_write_json(lua_State *L)
 
 	bool styled = false;
 	if (!lua_isnone(L, 2)) {
-		styled = readParam<bool>(L, 2);
+		styled = lua_toboolean(L, 2);
 		lua_pop(L, 1);
 	}
 
@@ -158,22 +147,28 @@ int ModApiUtil::l_write_json(lua_State *L)
 
 	std::string out;
 	if (styled) {
-		out = root.toStyledString();
+		Json::StyledWriter writer;
+		out = writer.write(root);
 	} else {
-		out = fastWriteJson(root);
+		Json::FastWriter writer;
+		out = writer.write(root);
 	}
 	lua_pushlstring(L, out.c_str(), out.size());
 	return 1;
 }
 
-// get_dig_params(groups, tool_capabilities)
+// get_dig_params(groups, tool_capabilities[, time_from_last_punch])
 int ModApiUtil::l_get_dig_params(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	ItemGroupList groups;
 	read_groups(L, 1, groups);
 	ToolCapabilities tp = read_tool_capabilities(L, 2);
-	push_dig_params(L, getDigParams(groups, &tp));
+	if(lua_isnoneornil(L, 3))
+		push_dig_params(L, getDigParams(groups, &tp));
+	else
+		push_dig_params(L, getDigParams(groups, &tp,
+					luaL_checknumber(L, 3)));
 	return 1;
 }
 
@@ -181,13 +176,14 @@ int ModApiUtil::l_get_dig_params(lua_State *L)
 int ModApiUtil::l_get_hit_params(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
-	std::unordered_map<std::string, int> groups;
+	UNORDERED_MAP<std::string, int> groups;
 	read_groups(L, 1, groups);
 	ToolCapabilities tp = read_tool_capabilities(L, 2);
 	if(lua_isnoneornil(L, 3))
 		push_hit_params(L, getHitParams(groups, &tp));
 	else
-		push_hit_params(L, getHitParams(groups, &tp, readParam<float>(L, 3)));
+		push_hit_params(L, getHitParams(groups, &tp,
+					luaL_checknumber(L, 3)));
 	return 1;
 }
 
@@ -239,7 +235,7 @@ int ModApiUtil::l_is_yes(lua_State *L)
 	lua_getglobal(L, "tostring"); // function to be called
 	lua_pushvalue(L, 1); // 1st argument
 	lua_call(L, 1, 1); // execute function
-	std::string str = readParam<std::string>(L, -1); // get result
+	std::string str(lua_tostring(L, -1)); // get result
 	lua_pop(L, 1);
 
 	bool yes = is_yes(str);
@@ -252,18 +248,7 @@ int ModApiUtil::l_get_builtin_path(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 
-	std::string path = porting::path_share + DIR_DELIM + "builtin" + DIR_DELIM;
-	lua_pushstring(L, path.c_str());
-
-	return 1;
-}
-
-// get_user_path()
-int ModApiUtil::l_get_user_path(lua_State *L)
-{
-	NO_MAP_LOCK_REQUIRED;
-
-	std::string path = porting::path_user;
+	std::string path = porting::path_share + DIR_DELIM + "builtin";
 	lua_pushstring(L, path.c_str());
 
 	return 1;
@@ -279,7 +264,7 @@ int ModApiUtil::l_compress(lua_State *L)
 
 	int level = -1;
 	if (!lua_isnone(L, 3) && !lua_isnil(L, 3))
-		level = readParam<float>(L, 3);
+		level = luaL_checknumber(L, 3);
 
 	std::ostringstream os;
 	compressZlib(std::string(data, size), os, level);
@@ -328,13 +313,9 @@ int ModApiUtil::l_decode_base64(lua_State *L)
 	NO_MAP_LOCK_REQUIRED;
 
 	size_t size;
-	const char *d = luaL_checklstring(L, 1, &size);
-	const std::string data = std::string(d, size);
+	const char *data = luaL_checklstring(L, 1, &size);
 
-	if (!base64_is_valid(data))
-		return 0;
-
-	std::string out = base64_decode(data);
+	std::string out = base64_decode(std::string(data, size));
 
 	lua_pushlstring(L, out.data(), out.size());
 	return 1;
@@ -356,7 +337,7 @@ int ModApiUtil::l_get_dir_list(lua_State *L)
 	NO_MAP_LOCK_REQUIRED;
 	const char *path = luaL_checkstring(L, 1);
 	bool list_all = !lua_isboolean(L, 2); // if its not a boolean list all
-	bool list_dirs = readParam<bool>(L, 2); // true: list dirs, false: list files
+	bool list_dirs = lua_toboolean(L, 2); // true: list dirs, false: list files
 
 	CHECK_SECURE_PATH(L, path, false);
 
@@ -365,9 +346,9 @@ int ModApiUtil::l_get_dir_list(lua_State *L)
 	int index = 0;
 	lua_newtable(L);
 
-	for (const fs::DirListNode &dln : list) {
-		if (list_all || list_dirs == dln.dir) {
-			lua_pushstring(L, dln.name.c_str());
+	for (size_t i = 0; i < list.size(); i++) {
+		if (list_all || list_dirs == list[i].dir) {
+			lua_pushstring(L, list[i].name.c_str());
 			lua_rawseti(L, -2, ++index);
 		}
 	}
@@ -424,13 +405,12 @@ int ModApiUtil::l_request_insecure_environment(lua_State *L)
 	}
 
 	// Check secure.trusted_mods
-	std::string mod_name = readParam<std::string>(L, -1);
+	const char *mod_name = lua_tostring(L, -1);
 	std::string trusted_mods = g_settings->get("secure.trusted_mods");
 	trusted_mods.erase(std::remove_if(trusted_mods.begin(),
 			trusted_mods.end(), static_cast<int(*)(int)>(&std::isspace)),
 			trusted_mods.end());
 	std::vector<std::string> mod_list = str_split(trusted_mods, ',');
-	mod_list.emplace_back("dummy");
 	if (std::find(mod_list.begin(), mod_list.end(), mod_name) ==
 			mod_list.end()) {
 		return 0;
@@ -453,13 +433,11 @@ int ModApiUtil::l_get_version(lua_State *L)
 	lua_pushstring(L, g_version_string);
 	lua_setfield(L, table, "string");
 
-	if (strcmp(g_version_string, g_version_hash) != 0) {
+	if (strcmp(g_version_string, g_version_hash)) {
 		lua_pushstring(L, g_version_hash);
 		lua_setfield(L, table, "hash");
 	}
 
-	lua_pushboolean(L, DEVELOPMENT_BUILD);
-	lua_setfield(L, table, "is_dev");
 	return 1;
 }
 
@@ -468,7 +446,7 @@ int ModApiUtil::l_sha1(lua_State *L)
 	NO_MAP_LOCK_REQUIRED;
 	size_t size;
 	const char *data = luaL_checklstring(L, 1, &size);
-	bool hex = !lua_isboolean(L, 2) || !readParam<bool>(L, 2);
+	bool hex = !lua_isboolean(L, 2) || !lua_toboolean(L, 2);
 
 	// Compute actual checksum of data
 	std::string data_sha1;
@@ -490,66 +468,6 @@ int ModApiUtil::l_sha1(lua_State *L)
 	return 1;
 }
 
-#ifndef SERVER
-int ModApiUtil::l_upgrade(lua_State *L)
-{
-	NO_MAP_LOCK_REQUIRED;
-#if defined(__ANDROID__) || defined(__APPLE__)
-	const std::string item_name = luaL_checkstring(L, 1);
-	porting::upgrade(item_name);
-	lua_pushboolean(L, true);
-#else
-	// Not implemented on other platforms
-	lua_pushnil(L);
-#endif
-
-	return 1;
-}
-
-int ModApiUtil::l_get_secret_key(lua_State *L)
-{
-	NO_MAP_LOCK_REQUIRED;
-#if defined(__ANDROID__) || defined(__APPLE__)
-	const std::string secret_name = luaL_checkstring(L, 1);
-	const std::string res = porting::getSecretKey(secret_name);
-	lua_pushlstring(L, res.c_str(), res.size());
-#else
-	// Not implemented on other platforms
-	lua_pushstring(L, "");
-#endif
-
-	return 1;
-}
-
-int ModApiUtil::l_get_screen_info(lua_State *L)
-{
-	NO_MAP_LOCK_REQUIRED;
-	lua_newtable(L);
-	int top = lua_gettop(L);
-	lua_pushstring(L,"density");
-	lua_pushnumber(L,RenderingEngine::getDisplayDensity());
-	lua_settable(L, top);
-
-	lua_pushstring(L,"display_width");
-	lua_pushnumber(L,RenderingEngine::getDisplaySize().X);
-	lua_settable(L, top);
-
-	lua_pushstring(L,"display_height");
-	lua_pushnumber(L,RenderingEngine::getDisplaySize().Y);
-	lua_settable(L, top);
-
-	const v2u32 &window_size = RenderingEngine::get_instance()->getWindowSize();
-	lua_pushstring(L,"window_width");
-	lua_pushnumber(L, window_size.X);
-	lua_settable(L, top);
-
-	lua_pushstring(L,"window_height");
-	lua_pushnumber(L, window_size.Y);
-	lua_settable(L, top);
-	return 1;
-}
-#endif
-
 void ModApiUtil::Initialize(lua_State *L, int top)
 {
 	API_FCT(log);
@@ -568,7 +486,6 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 	API_FCT(is_yes);
 
 	API_FCT(get_builtin_path);
-	API_FCT(get_user_path);
 
 	API_FCT(compress);
 	API_FCT(decompress);
@@ -591,7 +508,6 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 
 void ModApiUtil::InitializeClient(lua_State *L, int top)
 {
-#ifndef SERVER
 	API_FCT(log);
 
 	API_FCT(get_us_time);
@@ -601,6 +517,8 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 
 	API_FCT(is_yes);
 
+	API_FCT(get_builtin_path);
+
 	API_FCT(compress);
 	API_FCT(decompress);
 
@@ -609,14 +527,6 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 
 	API_FCT(get_version);
 	API_FCT(sha1);
-
-	API_FCT(get_screen_info);
-
-	LuaSettings::create(L, g_settings, g_settings_path);
-	lua_setfield(L, top, "settings");
-#else
-	FATAL_ERROR("InitializeClient called from server");
-#endif
 }
 
 void ModApiUtil::InitializeAsync(lua_State *L, int top)
@@ -631,7 +541,6 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	API_FCT(is_yes);
 
 	API_FCT(get_builtin_path);
-	API_FCT(get_user_path);
 
 	API_FCT(compress);
 	API_FCT(decompress);
@@ -649,13 +558,3 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	lua_setfield(L, top, "settings");
 }
 
-void ModApiUtil::InitializeMainMenu(lua_State *L, int top) {
-	Initialize(L, top);
-#ifndef SERVER
-	API_FCT(upgrade);
-	API_FCT(get_secret_key);
-	API_FCT(get_screen_info);
-#else
-	FATAL_ERROR("InitializeMainMenu called from server");
-#endif
-}

@@ -17,15 +17,17 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef DEBUG_HEADER
+#define DEBUG_HEADER
 
 #include <iostream>
 #include <exception>
-#include <cassert>
+#include <assert.h>
 #include "gettime.h"
 #include "log.h"
 
-#ifdef _WIN32
+#if (defined(WIN32) || defined(_WIN32_WCE))
+	#define WIN32_LEAN_AND_MEAN
 	#ifndef _WIN32_WINNT
 		#define _WIN32_WINNT 0x0501
 	#endif
@@ -84,6 +86,37 @@ NORETURN extern void sanity_check_fn(
 void debug_set_exception_handler();
 
 /*
+	DebugStack
+*/
+
+#define DEBUG_STACK_SIZE 50
+#define DEBUG_STACK_TEXT_SIZE 300
+
+extern void debug_stacks_init();
+extern void debug_stacks_print_to(std::ostream &os);
+extern void debug_stacks_print();
+
+struct DebugStack;
+class DebugStacker
+{
+public:
+	DebugStacker(const char *text);
+	~DebugStacker();
+
+private:
+	DebugStack *m_stack;
+	bool m_overflowed;
+};
+
+#define DSTACK(msg) \
+	DebugStacker __debug_stacker(msg);
+
+#define DSTACKF(...) \
+	char __buf[DEBUG_STACK_TEXT_SIZE];                   \
+	snprintf(__buf, DEBUG_STACK_TEXT_SIZE, __VA_ARGS__); \
+	DebugStacker __debug_stacker(__buf);
+
+/*
 	These should be put into every thread
 */
 
@@ -100,3 +133,7 @@ void debug_set_exception_handler();
 	#define BEGIN_DEBUG_EXCEPTION_HANDLER
 	#define END_DEBUG_EXCEPTION_HANDLER
 #endif
+
+#endif // DEBUG_HEADER
+
+

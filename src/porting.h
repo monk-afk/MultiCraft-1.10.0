@@ -21,7 +21,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 	Random portability stuff
 */
 
-#pragma once
+#ifndef PORTING_HEADER
+#define PORTING_HEADER
 
 #ifdef _WIN32
 	#ifdef _WIN32_WINNT
@@ -39,10 +40,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "debug.h"
 #include "constants.h"
 #include "gettime.h"
-
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-#include <SDL.h>
-#endif
+#include "threads.h"
 
 #ifdef _MSC_VER
 	#define SWPRINTF_CHARSTRING L"%S"
@@ -60,11 +58,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 	#define sleep_ms(x) Sleep(x)
 #else
 	#include <unistd.h>
-	#include <cstdint> //for uintptr_t
+	#include <stdint.h> //for uintptr_t
 
 	// Use standard Posix macro for Linux
 	#if (defined(linux) || defined(__linux)) && !defined(__linux__)
-		#define __linux__
+		#define __linux__ 
 	#endif
 	#if (defined(__linux__) || defined(__GNU__)) && !defined(_GNU_SOURCE)
 		#define _GNU_SOURCE
@@ -99,9 +97,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 	defined(__APPLE__)   ||                           \
 	defined(__sun)       || defined(sun)           || \
 	defined(__QNX__)     || defined(__QNXNTO__)
-	#ifndef HAVE_STRLCPY
-		#define HAVE_STRLCPY
-	#endif
+	#define HAVE_STRLCPY
 #endif
 
 // So we need to define our own.
@@ -118,16 +114,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #ifndef _WIN32 // Posix
 	#include <sys/time.h>
-	#include <ctime>
-
-#if defined(__MACH__) && defined(__APPLE__)
+	#include <time.h>
+	#if defined(__MACH__) && defined(__APPLE__)
 		#include <mach/clock.h>
 		#include <mach/mach.h>
 	#endif
-#endif
-
-#if defined(__APPLE__)
-	#include "wrapper.h"
 #endif
 
 namespace porting
@@ -137,10 +128,10 @@ namespace porting
 	Signal handler (grabs Ctrl-C on POSIX systems)
 */
 
-void signal_handler_init();
+void signal_handler_init(void);
 // Returns a pointer to a bool.
 // When the bool is true, program should quit.
-bool * signal_handler_killstatus();
+bool * signal_handler_killstatus(void);
 
 /*
 	Path of static data directory.
@@ -171,6 +162,7 @@ extern std::string path_cache;
 */
 std::string getDataPath(const char *subpath);
 
+
 /*
 	Initialize path_*.
 */
@@ -181,6 +173,8 @@ void initializePaths();
 	e.g. "Linux/3.12.7 x86_64"
 */
 std::string get_sysinfo();
+
+void initIrrlicht(irr::IrrlichtDevice * );
 
 
 // Monotonic counter getters.
@@ -238,21 +232,21 @@ inline u64 getTimeMs()
 {
 	struct timespec ts;
 	os_get_clock(&ts);
-	return ((u64) ts.tv_sec) * 1000LL + ((u64) ts.tv_nsec) / 1000000LL;
+	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 inline u64 getTimeUs()
 {
 	struct timespec ts;
 	os_get_clock(&ts);
-	return ((u64) ts.tv_sec) * 1000000LL + ((u64) ts.tv_nsec) / 1000LL;
+	return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 
 inline u64 getTimeNs()
 {
 	struct timespec ts;
 	os_get_clock(&ts);
-	return ((u64) ts.tv_sec) * 1000000000LL + ((u64) ts.tv_nsec);
+	return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
 #endif
@@ -278,15 +272,28 @@ inline u64 getDeltaMs(u64 old_time_ms, u64 new_time_ms)
 {
 	if (new_time_ms >= old_time_ms) {
 		return (new_time_ms - old_time_ms);
+	} else {
+		return (old_time_ms - new_time_ms);
 	}
-
-	return (old_time_ms - new_time_ms);
 }
+
+
+#ifndef SERVER
+float getDisplayDensity();
+
+v2u32 getDisplaySize();
+v2u32 getWindowSize();
+
+std::vector<core::vector3d<u32> > getSupportedVideoModes();
+std::vector<irr::video::E_DRIVER_TYPE> getSupportedVideoDrivers();
+const char *getVideoDriverName(irr::video::E_DRIVER_TYPE type);
+const char *getVideoDriverFriendlyName(irr::video::E_DRIVER_TYPE type);
+#endif
 
 inline const char *getPlatformName()
 {
 	return
-#if defined(__ANDROID__)
+#if defined(ANDROID)
 	"Android"
 #elif defined(__linux__)
 	"Linux"
@@ -313,8 +320,6 @@ inline const char *getPlatformName()
 	#else
 		"SunOS"
 	#endif
-#elif defined(__HAIKU__)
-	"Haiku"
 #elif defined(__CYGWIN__)
 	"Cygwin"
 #elif defined(__unix__) || defined(__unix)
@@ -332,48 +337,22 @@ inline const char *getPlatformName()
 // Touchscreen device specific function
 bool hasRealKeyboard();
 
+void setXorgClassHint(const video::SExposedVideoData &video_data,
+	const std::string &name);
+
+bool setWindowIcon(IrrlichtDevice *device);
+
+bool setXorgWindowIconFromPath(IrrlichtDevice *device,
+	const std::string &icon_file);
+
+// This only needs to be called at the start of execution, since all future
+// threads in the process inherit this exception handler
+void setWin32ExceptionHandler();
+
 bool secure_rand_fill_buf(void *buf, size_t len);
 
 // This attaches to the parents process console, or creates a new one if it doesnt exist.
-void attachOrCreateConsole();
-
-int mt_snprintf(char *buf, const size_t buf_size, const char *fmt, ...);
-
-/**
- * Opens URL in default web browser
- *
- * Must begin with http:// or https://, and not contain any new lines
- *
- * @param url The URL
- * @return true on success, false on failure
- */
-bool open_url(const std::string &url);
-
-/**
- * Opens a directory in the default file manager
- *
- * The directory must exist.
- *
- * @param path Path to directory
- * @return true on success, false on failure
- */
-
-#if defined(__APPLE__)
-void upgrade(const std::string &item);
-
-std::string getSecretKey(const std::string &key);
-
-float getScreenScale();
-#endif
-
-/**
- * Get total device memory
- */
-
-float getTotalSystemMemory();
-
-bool open_directory(const std::string &path);
-
+void attachOrCreateConsole(void);
 } // namespace porting
 
 #ifdef __ANDROID__
@@ -383,3 +362,6 @@ bool open_directory(const std::string &path);
 #ifdef __IOS__
 #include "porting_ios.h"
 #endif
+
+#endif // PORTING_HEADER
+

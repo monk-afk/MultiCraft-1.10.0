@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef IRRLICHTTYPES_EXTRABLOATED_HEADER
+#define IRRLICHTTYPES_EXTRABLOATED_HEADER
 
 #include "irrlichttypes_bloated.h"
 
@@ -26,11 +27,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <IImage.h>
 #include <IrrlichtDevice.h>
 #include <IMeshSceneNode.h>
-#include <IDummyTransformationSceneNode.h>
 #include <SMesh.h>
 #include <ISceneManager.h>
 #include <IMeshBuffer.h>
 #include <SMeshBuffer.h>
 #include <IGUIElement.h>
 #include <IGUIEnvironment.h>
+#endif
+
 #endif

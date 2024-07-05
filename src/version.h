@@ -17,8 +17,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef VERSION_HEADER
+#define VERSION_HEADER
 
 extern const char *g_version_string;
 extern const char *g_version_hash;
 extern const char *g_build_info;
+
+#endif
+

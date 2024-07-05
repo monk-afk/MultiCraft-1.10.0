@@ -17,11 +17,18 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef __CONVERT_JSON_H__
+#define __CONVERT_JSON_H__
 
 #include <json/json.h>
 
-Json::Value fetchJsonValue(const std::string &url,
-		std::vector<std::string> *extra_headers);
+struct ModStoreMod;
+struct ModStoreModDetails;
 
-std::string fastWriteJson(const Json::Value &value);
+std::vector<ModStoreMod>    readModStoreList(Json::Value& modlist);
+ModStoreModDetails          readModStoreModDetails(Json::Value& details);
+
+Json::Value                 fetchJsonValue(const std::string &url,
+                                           std::vector<std::string> *extra_headers);
+
+#endif

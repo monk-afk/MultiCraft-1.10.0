@@ -25,7 +25,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 /******************************************************************************/
 /******************************************************************************/
 
-#pragma once
+#ifndef C_CONTENT_H_
+#define C_CONTENT_H_
 
 extern "C" {
 #include <lua.h>
@@ -39,12 +40,11 @@ extern "C" {
 #include "itemgroup.h"
 #include "itemdef.h"
 #include "c_types.h"
-#include "hud.h"
 
 namespace Json { class Value; }
 
 struct MapNode;
-class NodeDefManager;
+class INodeDefManager;
 struct PointedThing;
 struct ItemStack;
 struct ItemDefinition;
@@ -62,13 +62,9 @@ struct HitParams;
 struct EnumString;
 struct NoiseParams;
 class Schematic;
-class ServerActiveObject;
-struct collisionMoveResult;
 
-extern struct EnumString es_TileAnimationType[];
 
-void               read_content_features     (lua_State *L, ContentFeatures &f,
-                                              int index);
+ContentFeatures    read_content_features     (lua_State *L, int index);
 void               push_content_features     (lua_State *L,
                                               const ContentFeatures &c);
 
@@ -111,7 +107,6 @@ void               push_item_definition_full (lua_State *L,
                                               const ItemDefinition &i);
 
 void               read_object_properties    (lua_State *L, int index,
-                                              ServerActiveObject *sao,
                                               ObjectProperties *prop,
                                               IItemDefManager *idef);
 void               push_object_properties    (lua_State *L,
@@ -125,10 +120,11 @@ void               read_inventory_list       (lua_State *L, int tableindex,
                                               Server *srv, int forcesize=-1);
 
 MapNode            readnode                  (lua_State *L, int index,
-                                              const NodeDefManager *ndef);
+                                              INodeDefManager *ndef);
 void               pushnode                  (lua_State *L, const MapNode &n,
-                                              const NodeDefManager *ndef);
+                                              INodeDefManager *ndef);
 
+NodeBox            read_nodebox              (lua_State *L, int index);
 
 void               read_groups               (lua_State *L, int index,
                                               ItemGroupList &result);
@@ -164,6 +160,9 @@ std::vector<ItemStack> read_items            (lua_State *L,
                                               int index,
                                               Server* srv);
 
+void               read_soundspec            (lua_State *L,
+                                              int index,
+                                              SimpleSoundSpec &spec);
 void               push_soundspec            (lua_State *L,
                                               const SimpleSoundSpec &spec);
 
@@ -183,20 +182,10 @@ bool               push_json_value           (lua_State *L,
 void               read_json_value           (lua_State *L, Json::Value &root,
                                               int index, u8 recursion = 0);
 
-/*!
- * Pushes a Lua `pointed_thing` to the given Lua stack.
- * \param csm If true, a client side pointed thing is pushed
- * \param hitpoint If true, the exact pointing location is also pushed
- */
-void push_pointed_thing(lua_State *L, const PointedThing &pointed, bool csm =
-	false, bool hitpoint = false);
+void               push_pointed_thing        (lua_State *L, const PointedThing &pointed, bool csm = false);
 
 void               push_objectRef            (lua_State *L, const u16 id);
 
-void               read_hud_element          (lua_State *L, HudElement *elem);
+extern struct EnumString es_TileAnimationType[];
 
-void               push_hud_element          (lua_State *L, HudElement *elem);
-
-HudElementStat     read_hud_change           (lua_State *L, HudElement *elem, void **value);
-
-void               push_collision_move_result(lua_State *L, const collisionMoveResult &res);
+#endif /* C_CONTENT_H_ */

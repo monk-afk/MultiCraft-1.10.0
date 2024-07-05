@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef HTTPFETCH_HEADER
+#define HTTPFETCH_HEADER
 
 #include <vector>
 #include "util/string.h"
@@ -28,26 +29,17 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define HTTPFETCH_DISCARD 0
 #define HTTPFETCH_SYNC 1
 
-//  Methods
-enum HttpMethod : u8
-{
-	HTTP_GET,
-	HTTP_POST,
-	HTTP_PUT,
-	HTTP_DELETE,
-};
-
 struct HTTPFetchRequest
 {
-	std::string url = "";
+	std::string url;
 
 	// Identifies the caller (for asynchronous requests)
 	// Ignored by httpfetch_sync
-	unsigned long caller = HTTPFETCH_DISCARD;
+	unsigned long caller;
 
 	// Some number that identifies the request
 	// (when the same caller issues multiple httpfetch_async calls)
-	unsigned long request_id = 0;
+	unsigned long request_id;
 
 	// Timeout for the whole transfer, in milliseconds
 	long timeout;
@@ -57,17 +49,14 @@ struct HTTPFetchRequest
 
 	// Indicates if this is multipart/form-data or
 	// application/x-www-form-urlencoded.  POST-only.
-	bool multipart = false;
+	bool multipart;
 
-	//  The Method to use default = GET
-	//  Avaible methods GET, POST, PUT, DELETE
-	HttpMethod method = HTTP_GET;
+	// POST fields.  Fields are escaped properly.
+	// If this is empty a GET request is done instead.
+	StringMap post_fields;
 
-	// Fields of the request
-	StringMap fields;
-
-	// Raw data of the request overrides fields
-	std::string raw_data;
+	// Raw POST data, overrides post_fields.
+	std::string post_data;
 
 	// If not empty, should contain entries such as "Accept: text/html"
 	std::vector<std::string> extra_headers;
@@ -80,18 +69,23 @@ struct HTTPFetchRequest
 
 struct HTTPFetchResult
 {
-	bool succeeded = false;
-	bool timeout = false;
-	long response_code = 0;
-	std::string data = "";
+	bool succeeded;
+	bool timeout;
+	long response_code;
+	std::string data;
 	// The caller and request_id from the corresponding HTTPFetchRequest.
-	unsigned long caller = HTTPFETCH_DISCARD;
-	unsigned long request_id = 0;
+	unsigned long caller;
+	unsigned long request_id;
 
-	HTTPFetchResult() = default;
+	HTTPFetchResult()
+	    : succeeded(false), timeout(false), response_code(0), data(""),
+	      caller(HTTPFETCH_DISCARD), request_id(0)
+	{
+	}
 
-	HTTPFetchResult(const HTTPFetchRequest &fetch_request) :
-			caller(fetch_request.caller), request_id(fetch_request.request_id)
+	HTTPFetchResult(const HTTPFetchRequest &fetch_request)
+	    : succeeded(false), timeout(false), response_code(0), data(""),
+	      caller(fetch_request.caller), request_id(fetch_request.request_id)
 	{
 	}
 };
@@ -124,3 +118,5 @@ void httpfetch_caller_free(unsigned long caller);
 // Performs a synchronous HTTP request. This blocks and therefore should
 // only be used from background threads.
 void httpfetch_sync(const HTTPFetchRequest &fetch_request, HTTPFetchResult &fetch_result);
+
+#endif // !HTTPFETCH_HEADER

@@ -18,11 +18,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef REMOTEPLAYER_HEADER
+#define REMOTEPLAYER_HEADER
 
 #include "player.h"
 #include "cloudparams.h"
-#include "skyparams.h"
 
 class PlayerSAO;
 
@@ -42,7 +42,9 @@ class RemotePlayer : public Player
 
 public:
 	RemotePlayer(const char *name, IItemDefManager *idef);
-	virtual ~RemotePlayer() = default;
+	virtual ~RemotePlayer() {}
+
+	void deSerialize(std::istream &is, const std::string &playername, PlayerSAO *sao);
 
 	PlayerSAO *getPlayerSAO() { return m_sao; }
 	void setPlayerSAO(PlayerSAO *sao) { m_sao = sao; }
@@ -70,7 +72,7 @@ public:
 
 	void setHotbarImage(const std::string &name) { hud_hotbar_image = name; }
 
-	const std::string &getHotbarImage() const { return hud_hotbar_image; }
+	std::string getHotbarImage() const { return hud_hotbar_image; }
 
 	void setHotbarSelectedImage(const std::string &name)
 	{
@@ -82,24 +84,23 @@ public:
 		return hud_hotbar_selected_image;
 	}
 
-	void setSky(const SkyboxParams &skybox_params)
+	void setSky(const video::SColor &bgcolor, const std::string &type,
+			const std::vector<std::string> &params, bool &clouds)
 	{
-		m_skybox_params = skybox_params;
+		m_sky_bgcolor = bgcolor;
+		m_sky_type = type;
+		m_sky_params = params;
+		m_sky_clouds = clouds;
 	}
 
-	const SkyboxParams &getSkyParams() const { return m_skybox_params; }
-
-	void setSun(const SunParams &sun_params) { m_sun_params = sun_params; }
-
-	const SunParams &getSunParams() const { return m_sun_params; }
-
-	void setMoon(const MoonParams &moon_params) { m_moon_params = moon_params; }
-
-	const MoonParams &getMoonParams() const { return m_moon_params; }
-
-	void setStars(const StarParams &star_params) { m_star_params = star_params; }
-
-	const StarParams &getStarParams() const { return m_star_params; }
+	void getSky(video::SColor *bgcolor, std::string *type,
+			std::vector<std::string> *params, bool *clouds)
+	{
+		*bgcolor = m_sky_bgcolor;
+		*type = m_sky_type;
+		*params = m_sky_params;
+		*clouds = m_sky_clouds;
+	}
 
 	void setCloudParams(const CloudParams &cloud_params)
 	{
@@ -110,7 +111,12 @@ public:
 
 	bool checkModified() const { return m_dirty || inventory.checkModified(); }
 
-	inline void setModified(const bool x) { m_dirty = x; }
+	void setModified(const bool x)
+	{
+		m_dirty = x;
+		if (!x)
+			inventory.setModified(x);
+	}
 
 	void setLocalAnimations(v2s32 frames[4], float frame_speed)
 	{
@@ -128,40 +134,39 @@ public:
 
 	void setDirty(bool dirty) { m_dirty = true; }
 
-	u16 protocol_version = 0;
-
-	// v1 for clients older than 5.1.0-dev
-	u16 formspec_version = 1;
-
-	session_t getPeerId() const { return m_peer_id; }
-
-	void setPeerId(session_t peer_id) { m_peer_id = peer_id; }
-
-	void onSuccessfulSave();
+	u16 protocol_version;
 
 private:
-	PlayerSAO *m_sao = nullptr;
-	bool m_dirty = false;
+	/*
+		serialize() writes a bunch of text that can contain
+		any characters except a '\0', and such an ending that
+		deSerialize stops reading exactly at the right point.
+	*/
+	void serialize(std::ostream &os);
+	void serializeExtraAttributes(std::string &output);
+
+	PlayerSAO *m_sao;
+	bool m_dirty;
 
 	static bool m_setting_cache_loaded;
 	static float m_setting_chat_message_limit_per_10sec;
 	static u16 m_setting_chat_message_limit_trigger_kick;
 
-	u32 m_last_chat_message_sent = std::time(0);
-	float m_chat_message_allowance = 5.0f;
-	u16 m_message_rate_overhead = 0;
+	u32 m_last_chat_message_sent;
+	float m_chat_message_allowance;
+	u16 m_message_rate_overhead;
 
-	bool m_day_night_ratio_do_override = false;
+	bool m_day_night_ratio_do_override;
 	float m_day_night_ratio;
-	std::string hud_hotbar_image = "";
-	std::string hud_hotbar_selected_image = "";
+	std::string hud_hotbar_image;
+	std::string hud_hotbar_selected_image;
+
+	std::string m_sky_type;
+	video::SColor m_sky_bgcolor;
+	std::vector<std::string> m_sky_params;
+	bool m_sky_clouds;
 
 	CloudParams m_cloud_params;
-
-	SkyboxParams m_skybox_params;
-	SunParams m_sun_params;
-	MoonParams m_moon_params;
-	StarParams m_star_params;
-
-	session_t m_peer_id = PEER_ID_INEXISTENT;
 };
+
+#endif

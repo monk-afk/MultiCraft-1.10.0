@@ -18,25 +18,23 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "scripting_mainmenu.h"
-#include "content/mods.h"
+#include "mods.h"
 #include "cpp_api/s_internal.h"
 #include "lua_api/l_base.h"
 #include "lua_api/l_http.h"
 #include "lua_api/l_mainmenu.h"
-#include "lua_api/l_noise.h"
 #include "lua_api/l_sound.h"
 #include "lua_api/l_util.h"
 #include "lua_api/l_settings.h"
-#include "log.h"
 
 extern "C" {
 #include "lualib.h"
 }
+
 #define MAINMENU_NUM_ASYNC_THREADS 4
 
 
-MainMenuScripting::MainMenuScripting(GUIEngine* guiengine):
-		ScriptApiBase(ScriptingType::MainMenu)
+MainMenuScripting::MainMenuScripting(GUIEngine* guiengine)
 {
 	setGuiEngine(guiengine);
 
@@ -66,7 +64,7 @@ void MainMenuScripting::initializeModApi(lua_State *L, int top)
 
 	// Initialize mod API modules
 	ModApiMainMenu::Initialize(L, top);
-	ModApiUtil::InitializeMainMenu(L, top);
+	ModApiUtil::Initialize(L, top);
 	ModApiSound::Initialize(L, top);
 	ModApiHttp::Initialize(L, top);
 
@@ -83,7 +81,6 @@ void MainMenuScripting::initializeModApi(lua_State *L, int top)
 /******************************************************************************/
 void MainMenuScripting::registerLuaClasses(lua_State *L, int top)
 {
-	LuaSecureRandom::Register(L);
 	LuaSettings::Register(L);
 }
 

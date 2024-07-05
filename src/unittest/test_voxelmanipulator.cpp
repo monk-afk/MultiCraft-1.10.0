@@ -33,7 +33,7 @@ public:
 	void runTests(IGameDef *gamedef);
 
 	void testVoxelArea();
-	void testVoxelManipulator(const NodeDefManager *nodedef);
+	void testVoxelManipulator(INodeDefManager *nodedef);
 };
 
 static TestVoxelManipulator g_test_instance;
@@ -61,8 +61,8 @@ void TestVoxelManipulator::testVoxelArea()
 
 	// Correct results
 	std::vector<VoxelArea> results;
-	results.emplace_back(v3s16(-2,-2,-3), v3s16(3,2,-3));
-	results.emplace_back(v3s16(3,-2,-2), v3s16(3,2,2));
+	results.push_back(VoxelArea(v3s16(-2,-2,-3), v3s16(3,2,-3)));
+	results.push_back(VoxelArea(v3s16(3,-2,-2), v3s16(3,2,2)));
 
 	UASSERT(aa.size() == results.size());
 
@@ -80,7 +80,7 @@ void TestVoxelManipulator::testVoxelArea()
 }
 
 
-void TestVoxelManipulator::testVoxelManipulator(const NodeDefManager *nodedef)
+void TestVoxelManipulator::testVoxelManipulator(INodeDefManager *nodedef)
 {
 	VoxelManipulator v;
 

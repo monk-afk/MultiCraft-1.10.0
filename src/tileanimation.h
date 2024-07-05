@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef TILEANIMATION_HEADER
+#define TILEANIMATION_HEADER
 
 #include <iostream>
 #include "irrlichttypes_bloated.h"
@@ -50,10 +51,12 @@ struct TileAnimationParams
 		} sheet_2d;
 	};
 
-	void serialize(std::ostream &os, u8 tiledef_version) const;
-	void deSerialize(std::istream &is, u8 tiledef_version);
+	void serialize(std::ostream &os, u16 protocol_version) const;
+	void deSerialize(std::istream &is, u16 protocol_version);
 	void determineParams(v2u32 texture_size, int *frame_count, int *frame_length_ms,
 			v2u32 *frame_size) const;
 	void getTextureModifer(std::ostream &os, v2u32 texture_size, int frame) const;
 	v2f getTextureCoords(v2u32 texture_size, int frame) const;
 };
+
+#endif

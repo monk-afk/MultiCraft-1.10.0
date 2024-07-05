@@ -18,7 +18,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef ITEMDEF_HEADER
+#define ITEMDEF_HEADER
 
 #include "irrlichttypes_extrabloated.h"
 #include <string>
@@ -26,7 +27,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <set>
 #include "itemgroup.h"
 #include "sound.h"
-#include "texture_override.h" // TextureOverride
 class IGameDef;
 class Client;
 struct ToolCapabilities;
@@ -56,15 +56,12 @@ struct ItemDefinition
 	ItemType type;
 	std::string name; // "" = hand
 	std::string description; // Shown in tooltip.
-	std::string short_description;
 
 	/*
 		Visual properties
 	*/
 	std::string inventory_image; // Optional for nodes, mandatory for tools/craftitems
-	std::string inventory_overlay; // Overlay of inventory_image.
 	std::string wield_image; // If empty, inventory_image or mesh (only nodes) is used
-	std::string wield_overlay; // Overlay of wield_image.
 	std::string palette_image; // If specified, the item will be colorized based on this
 	video::SColor color; // The fallback color of the node.
 	v3f wield_scale;
@@ -104,9 +101,8 @@ private:
 class IItemDefManager
 {
 public:
-	IItemDefManager() = default;
-
-	virtual ~IItemDefManager() = default;
+	IItemDefManager(){}
+	virtual ~IItemDefManager(){}
 
 	// Get item definition
 	virtual const ItemDefinition& get(const std::string &name) const=0;
@@ -138,9 +134,8 @@ public:
 class IWritableItemDefManager : public IItemDefManager
 {
 public:
-	IWritableItemDefManager() = default;
-
-	virtual ~IWritableItemDefManager() = default;
+	IWritableItemDefManager(){}
+	virtual ~IWritableItemDefManager(){}
 
 	// Get item definition
 	virtual const ItemDefinition& get(const std::string &name) const=0;
@@ -158,10 +153,6 @@ public:
 	virtual ItemMesh* getWieldMesh(const std::string &name,
 		Client *client) const=0;
 #endif
-
-	// Replace the textures of registered nodes with the ones specified in
-	// the texture pack's override.txt files
-	virtual void applyTextureOverrides(const std::vector<TextureOverride> &overrides)=0;
 
 	// Remove all registered item and node definitions and aliases
 	// Then re-add the builtin item definitions
@@ -183,3 +174,5 @@ public:
 };
 
 IWritableItemDefManager* createItemDefManager();
+
+#endif

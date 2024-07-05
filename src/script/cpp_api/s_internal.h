@@ -24,36 +24,34 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 /******************************************************************************/
 /******************************************************************************/
 
-#pragma once
+#ifndef S_INTERNAL_H_
+#define S_INTERNAL_H_
 
-#include <thread>
 #include "common/c_internal.h"
 #include "cpp_api/s_base.h"
-#include "threading/mutex_auto_lock.h"
 
 #ifdef SCRIPTAPI_LOCK_DEBUG
-#include <cassert>
+#include "debug.h" // assert()
 
 class LockChecker {
 public:
-	LockChecker(int *recursion_counter, std::thread::id *owning_thread)
+	LockChecker(int *recursion_counter, threadid_t *owning_thread)
 	{
 		m_lock_recursion_counter = recursion_counter;
 		m_owning_thread          = owning_thread;
 		m_original_level         = *recursion_counter;
 
-		if (*m_lock_recursion_counter > 0) {
-			assert(*m_owning_thread == std::this_thread::get_id());
-		} else {
-			*m_owning_thread = std::this_thread::get_id();
-		}
+		if (*m_lock_recursion_counter > 0)
+			assert(thr_is_current_thread(*m_owning_thread));
+		else
+			*m_owning_thread = thr_get_current_thread_id();
 
 		(*m_lock_recursion_counter)++;
 	}
 
 	~LockChecker()
 	{
-		assert(*m_owning_thread == std::this_thread::get_id());
+		assert(thr_is_current_thread(*m_owning_thread));
 		assert(*m_lock_recursion_counter > 0);
 
 		(*m_lock_recursion_counter)--;
@@ -64,7 +62,7 @@ public:
 private:
 	int *m_lock_recursion_counter;
 	int m_original_level;
-	std::thread::id *m_owning_thread;
+	threadid_t *m_owning_thread;
 };
 
 #define SCRIPTAPI_LOCK_CHECK           \
@@ -83,3 +81,6 @@ private:
 		lua_State *L = getStack();                                             \
 		assert(lua_checkstack(L, 20));                                         \
 		StackUnroller stack_unroller(L);
+
+#endif /* S_INTERNAL_H_ */
+

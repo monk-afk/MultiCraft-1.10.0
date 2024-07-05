@@ -19,14 +19,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "test.h"
 
-#include "client/sound.h"
 #include "nodedef.h"
 #include "itemdef.h"
 #include "gamedef.h"
-#include "modchannels.h"
-#include "content/mods.h"
-#include "util/numeric.h"
-#include "porting.h"
+#include "mods.h"
 
 content_t t_CONTENT_STONE;
 content_t t_CONTENT_GRASS;
@@ -47,11 +43,12 @@ public:
 	~TestGameDef();
 
 	IItemDefManager *getItemDefManager() { return m_itemdef; }
-	const NodeDefManager *getNodeDefManager() { return m_nodedef; }
+	INodeDefManager *getNodeDefManager() { return m_nodedef; }
 	ICraftDefManager *getCraftDefManager() { return m_craftdef; }
 	ITextureSource *getTextureSource() { return m_texturesrc; }
 	IShaderSource *getShaderSource() { return m_shadersrc; }
 	ISoundManager *getSoundManager() { return m_soundmgr; }
+	MtEventManager *getEventManager() { return m_eventmgr; }
 	scene::ISceneManager *getSceneManager() { return m_scenemgr; }
 	IRollbackManager *getRollbackManager() { return m_rollbackmgr; }
 	EmergeManager *getEmergeManager() { return m_emergemgr; }
@@ -71,30 +68,22 @@ public:
 	virtual std::string getModStoragePath() const { return "."; }
 	virtual bool registerModStorage(ModMetadata *meta) { return true; }
 	virtual void unregisterModStorage(const std::string &name) {}
-	bool joinModChannel(const std::string &channel);
-	bool leaveModChannel(const std::string &channel);
-	bool sendModChannelMessage(const std::string &channel, const std::string &message);
-	ModChannel *getModChannel(const std::string &channel)
-	{
-		return m_modchannel_mgr->getModChannel(channel);
-	}
 
 private:
-	IItemDefManager *m_itemdef = nullptr;
-	const NodeDefManager *m_nodedef = nullptr;
-	ICraftDefManager *m_craftdef = nullptr;
-	ITextureSource *m_texturesrc = nullptr;
-	IShaderSource *m_shadersrc = nullptr;
-	ISoundManager *m_soundmgr = nullptr;
-	scene::ISceneManager *m_scenemgr = nullptr;
-	IRollbackManager *m_rollbackmgr = nullptr;
-	EmergeManager *m_emergemgr = nullptr;
-	std::unique_ptr<ModChannelMgr> m_modchannel_mgr;
+	IItemDefManager *m_itemdef;
+	INodeDefManager *m_nodedef;
+	ICraftDefManager *m_craftdef;
+	ITextureSource *m_texturesrc;
+	IShaderSource *m_shadersrc;
+	ISoundManager *m_soundmgr;
+	MtEventManager *m_eventmgr;
+	scene::ISceneManager *m_scenemgr;
+	IRollbackManager *m_rollbackmgr;
+	EmergeManager *m_emergemgr;
 };
 
 
-TestGameDef::TestGameDef() :
-	m_modchannel_mgr(new ModChannelMgr())
+TestGameDef::TestGameDef()
 {
 	m_itemdef = createItemDefManager();
 	m_nodedef = createNodeDefManager();
@@ -113,7 +102,7 @@ TestGameDef::~TestGameDef()
 void TestGameDef::defineSomeNodes()
 {
 	IWritableItemDefManager *idef = (IWritableItemDefManager *)m_itemdef;
-	NodeDefManager *ndef = (NodeDefManager *)m_nodedef;
+	IWritableNodeDefManager *ndef = (IWritableNodeDefManager *)m_nodedef;
 
 	ItemDefinition itemdef;
 	ContentFeatures f;
@@ -130,8 +119,8 @@ void TestGameDef::defineSomeNodes()
 		"{default_stone.png";
 	f = ContentFeatures();
 	f.name = itemdef.name;
-	for (TileDef &tiledef : f.tiledef)
-		tiledef.name = "default_stone.png";
+	for(int i = 0; i < 6; i++)
+		f.tiledef[i].name = "default_stone.png";
 	f.is_ground_content = true;
 	idef->registerItem(itemdef);
 	t_CONTENT_STONE = ndef->set(f.name, f);
@@ -180,13 +169,13 @@ void TestGameDef::defineSomeNodes()
 		"{default_water.png";
 	f = ContentFeatures();
 	f.name = itemdef.name;
-	f.alpha = ALPHAMODE_BLEND;
+	f.alpha = 128;
 	f.liquid_type = LIQUID_SOURCE;
 	f.liquid_viscosity = 4;
 	f.is_ground_content = true;
 	f.groups["liquids"] = 3;
-	for (TileDef &tiledef : f.tiledef)
-		tiledef.name = "default_water.png";
+	for(int i = 0; i < 6; i++)
+		f.tiledef[i].name = "default_water.png";
 	idef->registerItem(itemdef);
 	t_CONTENT_WATER = ndef->set(f.name, f);
 
@@ -201,14 +190,14 @@ void TestGameDef::defineSomeNodes()
 		"{default_lava.png";
 	f = ContentFeatures();
 	f.name = itemdef.name;
-	f.alpha = ALPHAMODE_OPAQUE;
+	f.alpha = 128;
 	f.liquid_type = LIQUID_SOURCE;
 	f.liquid_viscosity = 7;
 	f.light_source = LIGHT_MAX-1;
 	f.is_ground_content = true;
 	f.groups["liquids"] = 3;
-	for (TileDef &tiledef : f.tiledef)
-		tiledef.name = "default_lava.png";
+	for(int i = 0; i < 6; i++)
+		f.tiledef[i].name = "default_lava.png";
 	idef->registerItem(itemdef);
 	t_CONTENT_LAVA = ndef->set(f.name, f);
 
@@ -225,30 +214,11 @@ void TestGameDef::defineSomeNodes()
 		"{default_brick.png";
 	f = ContentFeatures();
 	f.name = itemdef.name;
-	for (TileDef &tiledef : f.tiledef)
-		tiledef.name = "default_brick.png";
+	for(int i = 0; i < 6; i++)
+		f.tiledef[i].name = "default_brick.png";
 	f.is_ground_content = true;
 	idef->registerItem(itemdef);
 	t_CONTENT_BRICK = ndef->set(f.name, f);
-}
-
-bool TestGameDef::joinModChannel(const std::string &channel)
-{
-	return m_modchannel_mgr->joinChannel(channel, PEER_ID_SERVER);
-}
-
-bool TestGameDef::leaveModChannel(const std::string &channel)
-{
-	return m_modchannel_mgr->leaveChannel(channel, PEER_ID_SERVER);
-}
-
-bool TestGameDef::sendModChannelMessage(const std::string &channel,
-	const std::string &message)
-{
-	if (!m_modchannel_mgr->channelRegistered(channel))
-		return false;
-
-	return true;
 }
 
 ////
@@ -257,6 +227,8 @@ bool TestGameDef::sendModChannelMessage(const std::string &channel,
 
 bool run_tests()
 {
+	DSTACK(FUNCTION_NAME);
+
 	u64 t1 = porting::getTimeMs();
 	TestGameDef gamedef;
 
@@ -324,7 +296,7 @@ std::string TestBase::getTestTempDirectory()
 		return m_test_dir;
 
 	char buf[32];
-	porting::mt_snprintf(buf, sizeof(buf), "%08X", myrand());
+	snprintf(buf, sizeof(buf), "%08X", myrand());
 
 	m_test_dir = fs::TempPath() + DIR_DELIM "mttest_" + buf;
 	if (!fs::CreateDir(m_test_dir))
@@ -336,7 +308,7 @@ std::string TestBase::getTestTempDirectory()
 std::string TestBase::getTestTempFile()
 {
 	char buf[32];
-	porting::mt_snprintf(buf, sizeof(buf), "%08X", myrand());
+	snprintf(buf, sizeof(buf), "%08X", myrand());
 
 	return getTestTempDirectory() + DIR_DELIM + buf + ".tmp";
 }
@@ -650,12 +622,12 @@ struct TestMapSector: public TestBase
 		// Create one with no heightmaps
 		ServerMapSector sector(&parent, v2s16(1,1));
 
-		UASSERT(sector.getBlockNoCreateNoEx(0) == nullptr);
-		UASSERT(sector.getBlockNoCreateNoEx(1) == nullptr);
+		UASSERT(sector.getBlockNoCreateNoEx(0) == 0);
+		UASSERT(sector.getBlockNoCreateNoEx(1) == 0);
 
 		MapBlock * bref = sector.createBlankBlock(-2);
 
-		UASSERT(sector.getBlockNoCreateNoEx(0) == nullptr);
+		UASSERT(sector.getBlockNoCreateNoEx(0) == 0);
 		UASSERT(sector.getBlockNoCreateNoEx(-2) == bref);
 
 		//TODO: Check for AlreadyExistsException

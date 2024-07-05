@@ -19,15 +19,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "scripting_client.h"
-#include "client/client.h"
+#include "client.h"
 #include "cpp_api/s_internal.h"
 #include "lua_api/l_client.h"
 #include "lua_api/l_env.h"
-#include "lua_api/l_item.h"
-#include "lua_api/l_itemstackmeta.h"
 #include "lua_api/l_minimap.h"
-#include "lua_api/l_modchannels.h"
-#include "lua_api/l_particles_local.h"
 #include "lua_api/l_storage.h"
 #include "lua_api/l_sound.h"
 #include "lua_api/l_util.h"
@@ -35,10 +31,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "lua_api/l_nodemeta.h"
 #include "lua_api/l_localplayer.h"
 #include "lua_api/l_camera.h"
-#include "lua_api/l_settings.h"
+
+#ifndef DISABLE_CSM
 
 ClientScripting::ClientScripting(Client *client):
-	ScriptApiBase(ScriptingType::Client)
+	ScriptApiBase()
 {
 	setGameDef(client);
 
@@ -56,6 +53,9 @@ ClientScripting::ClientScripting(Client *client):
 	InitializeModApi(L, top);
 	lua_pop(L, 1);
 
+	if (client->getMinimap())
+		LuaMinimap::create(L, client->getMinimap());
+
 	// Push builtin initialization type
 	lua_pushstring(L, "client");
 	lua_setglobal(L, "INIT");
@@ -66,27 +66,22 @@ ClientScripting::ClientScripting(Client *client):
 void ClientScripting::InitializeModApi(lua_State *L, int top)
 {
 	LuaItemStack::Register(L);
-	ItemStackMetaRef::Register(L);
-	LuaRaycast::Register(L);
 	StorageRef::Register(L);
 	LuaMinimap::Register(L);
 	NodeMetaRef::RegisterClient(L);
 	LuaLocalPlayer::Register(L);
 	LuaCamera::Register(L);
-	ModChannelRef::Register(L);
-	LuaSettings::Register(L);
 
 	ModApiUtil::InitializeClient(L, top);
 	ModApiClient::Initialize(L, top);
 	ModApiStorage::Initialize(L, top);
 	ModApiEnvMod::InitializeClient(L, top);
-	ModApiChannels::Initialize(L, top);
-	ModApiParticlesLocal::Initialize(L, top);
 }
 
 void ClientScripting::on_client_ready(LocalPlayer *localplayer)
 {
-	LuaLocalPlayer::create(getStack(), localplayer);
+	lua_State *L = getStack();
+	LuaLocalPlayer::create(L, localplayer);
 }
 
 void ClientScripting::on_camera_ready(Camera *camera)
@@ -94,7 +89,4 @@ void ClientScripting::on_camera_ready(Camera *camera)
 	LuaCamera::create(getStack(), camera);
 }
 
-void ClientScripting::on_minimap_ready(Minimap *minimap)
-{
-	LuaMinimap::create(getStack(), minimap);
-}
+#endif

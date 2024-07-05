@@ -17,28 +17,24 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef FILESYS_HEADER
+#define FILESYS_HEADER
 
-#include <set>
 #include <string>
 #include <vector>
 #include "exceptions.h"
 
-#ifdef _WIN32
+#ifdef _WIN32 // WINDOWS
 #define DIR_DELIM "\\"
 #define DIR_DELIM_CHAR '\\'
-#define FILESYS_CASE_INSENSITIVE true
+#define FILESYS_CASE_INSENSITIVE 1
 #define PATH_DELIM ";"
-#else
+#else // POSIX
 #define DIR_DELIM "/"
 #define DIR_DELIM_CHAR '/'
-#define FILESYS_CASE_INSENSITIVE false
+#define FILESYS_CASE_INSENSITIVE 0
 #define PATH_DELIM ":"
 #endif
-
-namespace irr { namespace io {
-class IFileSystem;
-}}
 
 namespace fs
 {
@@ -71,23 +67,13 @@ bool DeleteSingleFileOrEmptyDirectory(const std::string &path);
 // Returns path to temp directory, can return "" on error
 std::string TempPath();
 
-/* Returns a list of subdirectories, including the path itself, but excluding
-       hidden directories (whose names start with . or _)
-*/
-void GetRecursiveDirs(std::vector<std::string> &dirs, const std::string &dir);
-std::vector<std::string> GetRecursiveDirs(const std::string &dir);
-
 /* Multiplatform */
 
-/* The path itself not included, returns a list of all subpaths.
-   dst - vector that contains all the subpaths.
-   list files - include files in the list of subpaths.
-   ignore - paths that start with these charcters will not be listed.
-*/
-void GetRecursiveSubPaths(const std::string &path,
-		  std::vector<std::string> &dst,
-		  bool list_files,
-		  const std::set<char> &ignore = {});
+// The path itself not included
+void GetRecursiveSubPaths(const std::string &path, std::vector<std::string> &dst);
+
+// Tries to delete all, returns false if any failed
+bool DeletePaths(const std::vector<std::string> &paths);
 
 // Only pass full paths to this one. True on success.
 bool RecursiveDeleteContent(const std::string &path);
@@ -129,14 +115,9 @@ const char *GetFilenameFromPath(const char *path);
 
 bool safeWriteToFile(const std::string &path, const std::string &content);
 
-#ifndef SERVER
-bool extractZipFile(irr::io::IFileSystem *fs, const char *filename,
-		const std::string &destination, const char *password = "",
-		std::string *errorMessage = nullptr);
-#endif
-
-bool ReadFile(const std::string &path, std::string &out);
-
 bool Rename(const std::string &from, const std::string &to);
 
 } // namespace fs
+
+#endif
+

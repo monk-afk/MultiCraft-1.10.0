@@ -25,43 +25,31 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "porting.h"
 
-#if defined(__FreeBSD__)  || defined(__NetBSD__) || defined(__DragonFly__) || defined(__OpenBSD__)
+#if defined(__FreeBSD__)
 	#include <sys/types.h>
 	#include <sys/sysctl.h>
-	extern char **environ;
 #elif defined(_WIN32)
 	#include <windows.h>
 	#include <wincrypt.h>
 	#include <algorithm>
 	#include <shlwapi.h>
-	#include <shellapi.h>
 #endif
 #if !defined(_WIN32)
 	#include <unistd.h>
 	#include <sys/utsname.h>
-	#if !defined(__ANDROID__)
-		#include <spawn.h>
-	#endif
 #endif
 #if defined(__hpux)
 	#define _PSTAT64
 	#include <sys/pstat.h>
 #endif
-#if defined(__ANDROID__)
-	#include "porting_android.h"
+#if !defined(_WIN32) && !defined(__APPLE__) && \
+	!defined(__ANDROID__) && !defined(__IOS__) && \
+	!defined(SERVER)
+	#define XORG_USED
 #endif
-#if defined(__APPLE__)
-	// For _NSGetEnviron()
-	// Related: https://gitlab.haskell.org/ghc/ghc/issues/2458
-	#include <crt_externs.h>
-#endif
-
-#if defined(__HAIKU__)
-	#include <FindDirectory.h>
-#endif
-
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-	#include <SDL.h>
+#ifdef XORG_USED
+	#include <X11/Xlib.h>
+	#include <X11/Xutil.h>
 #endif
 
 #include "config.h"
@@ -69,9 +57,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "filesys.h"
 #include "log.h"
 #include "util/string.h"
+#include "settings.h"
 #include <list>
-#include <cstdarg>
-#include <cstdio>
 
 namespace porting
 {
@@ -82,7 +69,7 @@ namespace porting
 
 bool g_killed = false;
 
-bool *signal_handler_killstatus()
+bool * signal_handler_killstatus(void)
 {
 	return &g_killed;
 }
@@ -190,7 +177,7 @@ bool detectMSVCBuildDir(const std::string &path)
 		"bin\\Build",
 		NULL
 	};
-	return (!removeStringEnd(path, ends).empty());
+	return (removeStringEnd(path, ends) != "");
 }
 
 std::string get_sysinfo()
@@ -329,12 +316,6 @@ bool getCurrentExecPath(char *buf, size_t len)
 	return true;
 }
 
-#elif defined(__HAIKU__)
-
-bool getCurrentExecPath(char *buf, size_t len)
-{
-	return find_path(B_APP_IMAGE_SYMBOL, B_FIND_PATH_IMAGE_PATH, NULL, buf, len) == B_OK;
-}
 
 //// Solaris
 #elif defined(__sun) || defined(sun)
@@ -379,21 +360,6 @@ bool getCurrentExecPath(char *buf, size_t len)
 #endif
 
 
-//// Non-Windows
-#if !defined(_WIN32)
-
-const char *getHomeOrFail()
-{
-	const char *home = getenv("HOME");
-	// In rare cases the HOME environment variable may be unset
-	FATAL_ERROR_IF(!home,
-		"Required environment variable HOME is not set");
-	return home;
-}
-
-#endif
-
-
 //// Windows
 #if defined(_WIN32)
 
@@ -406,27 +372,20 @@ bool setSystemPaths()
 		"Failed to get current executable path");
 	pathRemoveFile(buf, '\\');
 
-	std::string exepath(buf);
-
 	// Use ".\bin\.."
-	path_share = exepath + "\\..";
-	if (detectMSVCBuildDir(exepath)) {
-		// The msvc build dir schould normaly not be present if properly installed,
-		// but its usefull for debugging.
-		path_share += DIR_DELIM "..";
-	}
+	path_share = std::string(buf) + "\\..";
 
-	// Use "C:\Users\<user>\AppData\Roaming\<PROJECT_NAME_C>"
+	// Use "C:\Documents and Settings\user\Application Data\<PROJECT_NAME>"
 	DWORD len = GetEnvironmentVariable("APPDATA", buf, sizeof(buf));
 	FATAL_ERROR_IF(len == 0 || len > sizeof(buf), "Failed to get APPDATA");
 
-	path_user = std::string(buf) + DIR_DELIM + PROJECT_NAME_C;
+	path_user = std::string(buf) + DIR_DELIM + PROJECT_NAME;
 	return true;
 }
 
 
 //// Linux
-#elif defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+#elif defined(__linux__)
 
 bool setSystemPaths()
 {
@@ -448,7 +407,7 @@ bool setSystemPaths()
 	// It is identified by containing the subdirectory "builtin".
 	std::list<std::string> trylist;
 	std::string static_sharedir = STATIC_SHAREDIR;
-	if (!static_sharedir.empty() && static_sharedir != ".")
+	if (static_sharedir != "" && static_sharedir != ".")
 		trylist.push_back(static_sharedir);
 
 	trylist.push_back(bindir + DIR_DELIM ".." DIR_DELIM "share"
@@ -480,7 +439,7 @@ bool setSystemPaths()
 	}
 
 #ifndef __ANDROID__
-	path_user = std::string(getHomeOrFail()) + DIR_DELIM "."
+	path_user = std::string(getenv("HOME")) + DIR_DELIM "."
 		+ PROJECT_NAME;
 #endif
 
@@ -504,7 +463,7 @@ bool setSystemPaths()
 	}
 	CFRelease(resources_url);
 
-	path_user = std::string(getHomeOrFail())
+	path_user = std::string(getenv("HOME"))
 		+ "/Library/Application Support/"
 		+ PROJECT_NAME;
 	return true;
@@ -516,7 +475,7 @@ bool setSystemPaths()
 bool setSystemPaths()
 {
 	path_share = STATIC_SHAREDIR;
-	path_user  = std::string(getHomeOrFail()) + DIR_DELIM "."
+	path_user  = std::string(getenv("HOME")) + DIR_DELIM "."
 		+ lowercase(PROJECT_NAME);
 	return true;
 }
@@ -524,7 +483,6 @@ bool setSystemPaths()
 
 #endif
 
-#if !defined(__ANDROID__) && !defined(__IOS__)
 void initializePaths()
 {
 #if RUN_IN_PLACE
@@ -575,10 +533,6 @@ void initializePaths()
 	if (!setSystemPaths())
 		errorstream << "Failed to get one or more system-wide path" << std::endl;
 
-
-#  ifdef _WIN32
-	path_cache = path_user + DIR_DELIM + "cache";
-#  else
 	// Initialize path_cache
 	// First try $XDG_CACHE_HOME/PROJECT_NAME
 	const char *cache_dir = getenv("XDG_CACHE_HOME");
@@ -593,28 +547,27 @@ void initializePaths()
 		// If neither works, use $PATH_USER/cache
 		path_cache = path_user + DIR_DELIM + "cache";
 	}
-#  endif // _WIN32
-#endif // RUN_IN_PLACE
+#endif
 
 	infostream << "Detected share path: " << path_share << std::endl;
 	infostream << "Detected user path: " << path_user << std::endl;
 	infostream << "Detected cache path: " << path_cache << std::endl;
 
-#if USE_GETTEXT
+#ifdef USE_GETTEXT
 	bool found_localedir = false;
 #  ifdef STATIC_LOCALEDIR
-	/* STATIC_LOCALEDIR may be a generalized path such as /usr/share/locale that
-	 * doesn't necessarily contain our locale files, so check data path first. */
-	path_locale = getDataPath("locale");
-	if (fs::PathExists(path_locale)) {
-		found_localedir = true;
-		infostream << "Using in-place locale directory " << path_locale
-			<< " even though a static one was provided." << std::endl;
-	} else if (STATIC_LOCALEDIR[0] && fs::PathExists(STATIC_LOCALEDIR)) {
+	if (STATIC_LOCALEDIR[0] && fs::PathExists(STATIC_LOCALEDIR)) {
 		found_localedir = true;
 		path_locale = STATIC_LOCALEDIR;
-		infostream << "Using static locale directory " << STATIC_LOCALEDIR
-			<< std::endl;
+		infostream << "Using locale directory " << STATIC_LOCALEDIR << std::endl;
+	} else {
+		path_locale = getDataPath("locale");
+		if (fs::PathExists(path_locale)) {
+			found_localedir = true;
+			infostream << "Using in-place locale directory " << path_locale
+				<< " even though a static one was provided "
+				<< "(RUN_IN_PLACE or CUSTOM_LOCALEDIR)." << std::endl;
+		}
 	}
 #  else
 	path_locale = getDataPath("locale");
@@ -628,10 +581,308 @@ void initializePaths()
 #endif  // USE_GETTEXT
 }
 
-// Dummy for other OS
+
+
+void setXorgClassHint(const video::SExposedVideoData &video_data,
+	const std::string &name)
+{
+#ifdef XORG_USED
+	if (video_data.OpenGLLinux.X11Display == NULL)
+		return;
+
+	XClassHint *classhint = XAllocClassHint();
+	classhint->res_name  = (char *)name.c_str();
+	classhint->res_class = (char *)name.c_str();
+
+	XSetClassHint((Display *)video_data.OpenGLLinux.X11Display,
+		video_data.OpenGLLinux.X11Window, classhint);
+	XFree(classhint);
+#endif
+}
+
+bool setWindowIcon(IrrlichtDevice *device)
+{
+#if defined(XORG_USED)
+#	if RUN_IN_PLACE
+	return setXorgWindowIconFromPath(device,
+			path_share + "/misc/" PROJECT_NAME "-xorg-icon-128.png");
+#	else
+	// We have semi-support for reading in-place data if we are
+	// compiled with RUN_IN_PLACE. Don't break with this and
+	// also try the path_share location.
+	return
+		setXorgWindowIconFromPath(device,
+			ICON_DIR "/hicolor/128x128/apps/" PROJECT_NAME ".png") ||
+		setXorgWindowIconFromPath(device,
+			path_share + "/misc/" PROJECT_NAME "-xorg-icon-128.png");
+#	endif
+#elif defined(_WIN32)
+	const video::SExposedVideoData exposedData = device->getVideoDriver()->getExposedVideoData();
+	HWND hWnd; // Window handle
+
+	switch (device->getVideoDriver()->getDriverType()) {
+/*	case video::EDT_DIRECT3D8:
+		hWnd = reinterpret_cast<HWND>(exposedData.D3D8.HWnd);
+		break;*/
+	case video::EDT_DIRECT3D9:
+		hWnd = reinterpret_cast<HWND>(exposedData.D3D9.HWnd);
+		break;
+	case video::EDT_OPENGL:
+		hWnd = reinterpret_cast<HWND>(exposedData.OpenGLWin32.HWnd);
+		break;
+	default:
+		return false;
+	}
+
+	// Load the ICON from resource file
+	const HICON hicon = LoadIcon(
+		GetModuleHandle(NULL),
+		MAKEINTRESOURCE(130) // The ID of the ICON defined in winresource.rc
+	);
+
+	if (hicon) {
+		SendMessage(hWnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hicon));
+		SendMessage(hWnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hicon));
+		return true;
+	}
+	return false;
+#else
+	return false;
+#endif
+}
+
+bool setXorgWindowIconFromPath(IrrlichtDevice *device,
+	const std::string &icon_file)
+{
+#ifdef XORG_USED
+
+	video::IVideoDriver *v_driver = device->getVideoDriver();
+
+	video::IImageLoader *image_loader = NULL;
+	u32 cnt = v_driver->getImageLoaderCount();
+	for (u32 i = 0; i < cnt; i++) {
+		if (v_driver->getImageLoader(i)->isALoadableFileExtension(icon_file.c_str())) {
+			image_loader = v_driver->getImageLoader(i);
+			break;
+		}
+	}
+
+	if (!image_loader) {
+		warningstream << "Could not find image loader for file '"
+			<< icon_file << "'" << std::endl;
+		return false;
+	}
+
+	io::IReadFile *icon_f = device->getFileSystem()->createAndOpenFile(icon_file.c_str());
+
+	if (!icon_f) {
+		warningstream << "Could not load icon file '"
+			<< icon_file << "'" << std::endl;
+		return false;
+	}
+
+	video::IImage *img = image_loader->loadImage(icon_f);
+
+	if (!img) {
+		warningstream << "Could not load icon file '"
+			<< icon_file << "'" << std::endl;
+		icon_f->drop();
+		return false;
+	}
+
+	u32 height = img->getDimension().Height;
+	u32 width = img->getDimension().Width;
+
+	size_t icon_buffer_len = 2 + height * width;
+	long *icon_buffer = new long[icon_buffer_len];
+
+	icon_buffer[0] = width;
+	icon_buffer[1] = height;
+
+	for (u32 x = 0; x < width; x++) {
+		for (u32 y = 0; y < height; y++) {
+			video::SColor col = img->getPixel(x, y);
+			long pixel_val = 0;
+			pixel_val |= (u8)col.getAlpha() << 24;
+			pixel_val |= (u8)col.getRed() << 16;
+			pixel_val |= (u8)col.getGreen() << 8;
+			pixel_val |= (u8)col.getBlue();
+			icon_buffer[2 + x + y * width] = pixel_val;
+		}
+	}
+
+	img->drop();
+	icon_f->drop();
+
+	const video::SExposedVideoData &video_data = v_driver->getExposedVideoData();
+
+	Display *x11_dpl = (Display *)video_data.OpenGLLinux.X11Display;
+
+	if (x11_dpl == NULL) {
+		warningstream << "Could not find x11 display for setting its icon."
+			<< std::endl;
+		delete [] icon_buffer;
+		return false;
+	}
+
+	Window x11_win = (Window)video_data.OpenGLLinux.X11Window;
+
+	Atom net_wm_icon = XInternAtom(x11_dpl, "_NET_WM_ICON", False);
+	Atom cardinal = XInternAtom(x11_dpl, "CARDINAL", False);
+	XChangeProperty(x11_dpl, x11_win,
+		net_wm_icon, cardinal, 32,
+		PropModeReplace, (const unsigned char *)icon_buffer,
+		icon_buffer_len);
+
+	delete [] icon_buffer;
+
+#endif
+	return true;
+}
+
+////
+//// Video/Display Information (Client-only)
+////
+
+#ifndef SERVER
+
+static irr::IrrlichtDevice *device;
+
+void initIrrlicht(irr::IrrlichtDevice *device_)
+{
+	device = device_;
+}
+
+v2u32 getWindowSize()
+{
+	return device->getVideoDriver()->getScreenSize();
+}
+
+
+std::vector<core::vector3d<u32> > getSupportedVideoModes()
+{
+	IrrlichtDevice *nulldevice = createDevice(video::EDT_NULL);
+	sanity_check(nulldevice != NULL);
+
+	std::vector<core::vector3d<u32> > mlist;
+	video::IVideoModeList *modelist = nulldevice->getVideoModeList();
+
+	u32 num_modes = modelist->getVideoModeCount();
+	for (u32 i = 0; i != num_modes; i++) {
+		core::dimension2d<u32> mode_res = modelist->getVideoModeResolution(i);
+		s32 mode_depth = modelist->getVideoModeDepth(i);
+		mlist.push_back(core::vector3d<u32>(mode_res.Width, mode_res.Height, mode_depth));
+	}
+
+	nulldevice->drop();
+
+	return mlist;
+}
+
+std::vector<irr::video::E_DRIVER_TYPE> getSupportedVideoDrivers()
+{
+	std::vector<irr::video::E_DRIVER_TYPE> drivers;
+
+	for (int i = 0; i != irr::video::EDT_COUNT; i++) {
+		if (irr::IrrlichtDevice::isDriverSupported((irr::video::E_DRIVER_TYPE)i))
+			drivers.push_back((irr::video::E_DRIVER_TYPE)i);
+	}
+
+	return drivers;
+}
+
+const char *getVideoDriverName(irr::video::E_DRIVER_TYPE type)
+{
+	static const char *driver_ids[] = {
+		"null",
+		"software",
+		"burningsvideo",
+		"direct3d8",
+		"direct3d9",
+		"opengl",
+		"ogles1",
+		"ogles2",
+	};
+
+	return driver_ids[type];
+}
+
+
+const char *getVideoDriverFriendlyName(irr::video::E_DRIVER_TYPE type)
+{
+	static const char *driver_names[] = {
+		"NULL Driver",
+		"Software Renderer",
+		"Burning's Video",
+		"Direct3D 8",
+		"Direct3D 9",
+		"OpenGL",
+		"OpenGL ES1",
+		"OpenGL ES2",
+	};
+
+	return driver_names[type];
+}
+
+#	if !defined(__ANDROID__) && !defined(__IOS__)
+#		ifdef XORG_USED
+
+static float calcDisplayDensity()
+{
+	const char *current_display = getenv("DISPLAY");
+
+	if (current_display != NULL) {
+		Display *x11display = XOpenDisplay(current_display);
+
+		if (x11display != NULL) {
+			/* try x direct */
+			float dpi_height = floor(DisplayHeight(x11display, 0) /
+							(DisplayHeightMM(x11display, 0) * 0.039370) + 0.5);
+			float dpi_width = floor(DisplayWidth(x11display, 0) /
+							(DisplayWidthMM(x11display, 0) * 0.039370) + 0.5);
+
+			XCloseDisplay(x11display);
+
+			return std::max(dpi_height,dpi_width) / 96.0;
+		}
+	}
+
+	/* return manually specified dpi */
+	return g_settings->getFloat("screen_dpi")/96.0;
+}
+
+
+float getDisplayDensity()
+{
+	static float cached_display_density = calcDisplayDensity();
+	return cached_display_density;
+}
+
+
+#		else // XORG_USED
+float getDisplayDensity()
+{
+	return g_settings->getFloat("screen_dpi")/96.0;
+}
+#		endif // XORG_USED
+
+v2u32 getDisplaySize()
+{
+	IrrlichtDevice *nulldevice = createDevice(video::EDT_NULL);
+
+	core::dimension2d<u32> deskres = nulldevice->getVideoModeList()->getDesktopResolution();
+	nulldevice -> drop();
+
+	return deskres;
+}
+#	endif // __ANDROID__/__IOS__
+#endif // SERVER
+
+#ifndef __ANDROID__
+// Dummy for other OS with a touchscreen
 bool hasRealKeyboard()
 {
-	return true;
+	return false;
 }
 #endif
 
@@ -674,7 +925,7 @@ bool secure_rand_fill_buf(void *buf, size_t len)
 
 #endif
 
-void attachOrCreateConsole()
+void attachOrCreateConsole(void)
 {
 #ifdef _WIN32
 	static bool consoleAllocated = false;
@@ -685,103 +936,6 @@ void attachOrCreateConsole()
 		consoleAllocated = true;
 	}
 #endif
-}
-
-int mt_snprintf(char *buf, const size_t buf_size, const char *fmt, ...)
-{
-	// https://msdn.microsoft.com/en-us/library/bt7tawza.aspx
-	//  Many of the MSVC / Windows printf-style functions do not support positional
-	//  arguments (eg. "%1$s"). We just forward the call to vsnprintf for sane
-	//  platforms, but defer to _vsprintf_p on MSVC / Windows.
-	// https://github.com/FFmpeg/FFmpeg/blob/5ae9fa13f5ac640bec113120d540f70971aa635d/compat/msvcrt/snprintf.c#L46
-	//  _vsprintf_p has to be shimmed with _vscprintf_p on -1 (for an example see
-	//  above FFmpeg link).
-	va_list args;
-	va_start(args, fmt);
-#ifndef _MSC_VER
-	int c = vsnprintf(buf, buf_size, fmt, args);
-#else  // _MSC_VER
-	int c = _vsprintf_p(buf, buf_size, fmt, args);
-	if (c == -1)
-		c = _vscprintf_p(fmt, args);
-#endif // _MSC_VER
-	va_end(args);
-	return c;
-}
-
-static bool open_uri(const std::string &uri)
-{
-	if (uri.find_first_of("\r\n") != std::string::npos) {
-		errorstream << "Unable to open URI as it is invalid, contains new line: " << uri << std::endl;
-		return false;
-	}
-
-#if defined(_WIN32)
-	return (intptr_t)ShellExecuteA(NULL, NULL, uri.c_str(), NULL, NULL, SW_SHOWNORMAL) > 32;
-#elif defined(__ANDROID__)
-	openURIAndroid(uri);
-	return true;
-#elif defined(__APPLE__)
-#ifdef __IOS__
-	ioswrap_open_url(uri.c_str());
-	return true;
-#else
-	const char *argv[] = {"open", uri.c_str(), NULL};
-	return posix_spawnp(NULL, "open", NULL, NULL, (char**)argv,
-		(*_NSGetEnviron())) == 0;
-#endif
-#else
-	const char *argv[] = {"xdg-open", uri.c_str(), NULL};
-	return posix_spawnp(NULL, "xdg-open", NULL, NULL, (char**)argv, environ) == 0;
-#endif
-}
-
-bool open_url(const std::string &url)
-{
-	if (url.substr(0, 7) != "http://" && url.substr(0, 8) != "https://") {
-		errorstream << "Unable to open browser as URL is missing schema: " << url << std::endl;
-		return false;
-	}
-
-	return open_uri(url);
-}
-
-#if defined(__APPLE__)
-void upgrade(const std::string &item)
-{
-	get_upgrade(item.c_str());
-}
-
-std::string getSecretKey(const std::string &key)
-{
-	return std::string(get_secret_key(key.c_str()));
-}
-
-float getScreenScale()
-{
-	static const float retval = get_screen_scale();
-	return retval;
-}
-#endif
-
-float getTotalSystemMemory()
-{
-#if defined(_IRR_COMPILE_WITH_SDL_DEVICE_)
-	static const float retval = SDL_GetSystemRAM();
-	return retval;
-#else
-	return 0;
-#endif
-}
-
-bool open_directory(const std::string &path)
-{
-	if (!fs::IsDir(path)) {
-		errorstream << "Unable to open directory as it does not exist: " << path << std::endl;
-		return false;
-	}
-
-	return open_uri(path);
 }
 
 // Load performance counter frequency only once at startup

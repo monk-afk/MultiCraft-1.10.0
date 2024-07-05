@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef CRAFTDEF_HEADER
+#define CRAFTDEF_HEADER
 
 #include <string>
 #include <iostream>
@@ -69,20 +70,17 @@ const int craft_hash_type_max = (int) CRAFT_HASH_TYPE_UNHASHED;
 */
 struct CraftInput
 {
-	CraftMethod method = CRAFT_METHOD_NORMAL;
-	unsigned int width = 0;
+	CraftMethod method;
+	unsigned int width;
 	std::vector<ItemStack> items;
 
-	CraftInput() = default;
-
+	CraftInput():
+		method(CRAFT_METHOD_NORMAL), width(0), items()
+	{}
 	CraftInput(CraftMethod method_, unsigned int width_,
 			const std::vector<ItemStack> &items_):
 		method(method_), width(width_), items(items_)
 	{}
-
-	// Returns true if all items are empty.
-	bool empty() const;
-
 	std::string dump() const;
 };
 
@@ -92,12 +90,13 @@ struct CraftInput
 struct CraftOutput
 {
 	// Used for normal crafting and cooking, itemstring
-	std::string item = "";
+	std::string item;
 	// Used for cooking (cook time) and fuel (burn time), seconds
-	float time = 0.0f;
+	float time;
 
-	CraftOutput() = default;
-
+	CraftOutput():
+		item(""), time(0)
+	{}
 	CraftOutput(const std::string &item_, float time_):
 		item(item_), time(time_)
 	{}
@@ -113,13 +112,18 @@ struct CraftOutput
 	Example: If ("bucket:bucket_water", "bucket:bucket_empty") is a
 	replacement pair, the crafting input slot that contained a water
 	bucket will contain an empty bucket after crafting.
+
+	Note: replacements only work correctly when stack_max of the item
+	to be replaced is 1. It is up to the mod writer to ensure this.
 */
 struct CraftReplacements
 {
 	// List of replacements
 	std::vector<std::pair<std::string, std::string> > pairs;
 
-	CraftReplacements() = default;
+	CraftReplacements():
+		pairs()
+	{}
 	CraftReplacements(const std::vector<std::pair<std::string, std::string> > &pairs_):
 		pairs(pairs_)
 	{}
@@ -132,35 +136,14 @@ struct CraftReplacements
 class CraftDefinition
 {
 public:
-	/*
-		Craft recipe priorities, from low to high
-
-		Recipes are searched from latest to first.
-		If a recipe with higher priority than a previous found one is
-		encountered, it is selected instead.
-	*/
-	enum RecipePriority
-	{
-		PRIORITY_NO_RECIPE,
-		PRIORITY_TOOLREPAIR,
-		PRIORITY_SHAPELESS_AND_GROUPS,
-		PRIORITY_SHAPELESS,
-		PRIORITY_SHAPED_AND_GROUPS,
-		PRIORITY_SHAPED,
-	};
-
-	CraftDefinition() = default;
-	virtual ~CraftDefinition() = default;
+	CraftDefinition(){}
+	virtual ~CraftDefinition(){}
 
 	// Returns type of crafting definition
 	virtual std::string getName() const=0;
 
 	// Checks whether the recipe is applicable
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const=0;
-	RecipePriority getPriority() const
-	{
-		return priority;
-	}
 	// Returns the output structure, meaning depends on crafting method
 	// The implementation can assume that check(input) returns true
 	virtual CraftOutput getOutput(const CraftInput &input, IGameDef *gamedef) const=0;
@@ -170,20 +153,13 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const=0;
 
-	CraftHashType getHashType() const
-	{
-		return hash_type;
-	}
+	virtual CraftHashType getHashType() const = 0;
 	virtual u64 getHash(CraftHashType type) const = 0;
 
 	// to be called after all mods are loaded, so that we catch all aliases
 	virtual void initHash(IGameDef *gamedef) = 0;
 
 	virtual std::string dump() const=0;
-
-protected:
-	CraftHashType hash_type;
-	RecipePriority priority;
 };
 
 /*
@@ -195,14 +171,18 @@ protected:
 class CraftDefinitionShaped: public CraftDefinition
 {
 public:
-	CraftDefinitionShaped() = delete;
+	CraftDefinitionShaped():
+		output(""), width(1), recipe(), hash_inited(false), replacements()
+	{}
 	CraftDefinitionShaped(
-		const std::string &output_,
-		unsigned int width_,
-		const std::vector<std::string> &recipe_,
-		const CraftReplacements &replacements_);
-
-	virtual ~CraftDefinitionShaped() = default;
+			const std::string &output_,
+			unsigned int width_,
+			const std::vector<std::string> &recipe_,
+			const CraftReplacements &replacements_):
+		output(output_), width(width_), recipe(recipe_),
+		hash_inited(false), replacements(replacements_)
+	{}
+	virtual ~CraftDefinitionShaped(){}
 
 	virtual std::string getName() const;
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const;
@@ -211,6 +191,7 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const;
 
+	virtual CraftHashType getHashType() const;
 	virtual u64 getHash(CraftHashType type) const;
 
 	virtual void initHash(IGameDef *gamedef);
@@ -219,15 +200,15 @@ public:
 
 private:
 	// Output itemstring
-	std::string output = "";
+	std::string output;
 	// Width of recipe
-	unsigned int width = 1;
+	unsigned int width;
 	// Recipe matrix (itemstrings)
 	std::vector<std::string> recipe;
 	// Recipe matrix (item names)
 	std::vector<std::string> recipe_names;
 	// bool indicating if initHash has been called already
-	bool hash_inited = false;
+	bool hash_inited;
 	// Replacement items for decrementInput()
 	CraftReplacements replacements;
 };
@@ -240,13 +221,17 @@ private:
 class CraftDefinitionShapeless: public CraftDefinition
 {
 public:
-	CraftDefinitionShapeless() = delete;
+	CraftDefinitionShapeless():
+		output(""), recipe(), hash_inited(false), replacements()
+	{}
 	CraftDefinitionShapeless(
-		const std::string &output_,
-		const std::vector<std::string> &recipe_,
-		const CraftReplacements &replacements_);
-
-	virtual ~CraftDefinitionShapeless() = default;
+			const std::string &output_,
+			const std::vector<std::string> &recipe_,
+			const CraftReplacements &replacements_):
+		output(output_), recipe(recipe_),
+		hash_inited(false), replacements(replacements_)
+	{}
+	virtual ~CraftDefinitionShapeless(){}
 
 	virtual std::string getName() const;
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const;
@@ -255,6 +240,7 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const;
 
+	virtual CraftHashType getHashType() const;
 	virtual u64 getHash(CraftHashType type) const;
 
 	virtual void initHash(IGameDef *gamedef);
@@ -269,7 +255,7 @@ private:
 	// Recipe list (item names)
 	std::vector<std::string> recipe_names;
 	// bool indicating if initHash has been called already
-	bool hash_inited = false;
+	bool hash_inited;
 	// Replacement items for decrementInput()
 	CraftReplacements replacements;
 };
@@ -283,10 +269,13 @@ private:
 class CraftDefinitionToolRepair: public CraftDefinition
 {
 public:
-	CraftDefinitionToolRepair() = delete;
-	CraftDefinitionToolRepair(float additional_wear_);
-
-	virtual ~CraftDefinitionToolRepair() = default;
+	CraftDefinitionToolRepair():
+		additional_wear(0)
+	{}
+	CraftDefinitionToolRepair(float additional_wear_):
+		additional_wear(additional_wear_)
+	{}
+	virtual ~CraftDefinitionToolRepair(){}
 
 	virtual std::string getName() const;
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const;
@@ -295,12 +284,10 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const;
 
+	virtual CraftHashType getHashType() const { return CRAFT_HASH_TYPE_COUNT; }
 	virtual u64 getHash(CraftHashType type) const { return 2; }
 
-	virtual void initHash(IGameDef *gamedef)
-	{
-		hash_type = CRAFT_HASH_TYPE_COUNT;
-	}
+	virtual void initHash(IGameDef *gamedef) {}
 
 	virtual std::string dump() const;
 
@@ -310,7 +297,7 @@ private:
 	// 1 = new tool is completely broken
 	// 0 = simply add remaining uses of both input tools
 	// -1 = new tool is completely pristine
-	float additional_wear = 0.0f;
+	float additional_wear;
 };
 
 /*
@@ -320,14 +307,18 @@ private:
 class CraftDefinitionCooking: public CraftDefinition
 {
 public:
-	CraftDefinitionCooking() = delete;
+	CraftDefinitionCooking():
+		output(""), recipe(""), hash_inited(false), cooktime()
+	{}
 	CraftDefinitionCooking(
-		const std::string &output_,
-		const std::string &recipe_,
-		float cooktime_,
-		const CraftReplacements &replacements_);
-
-	virtual ~CraftDefinitionCooking() = default;
+			const std::string &output_,
+			const std::string &recipe_,
+			float cooktime_,
+			const CraftReplacements &replacements_):
+		output(output_), recipe(recipe_), hash_inited(false),
+		cooktime(cooktime_), replacements(replacements_)
+	{}
+	virtual ~CraftDefinitionCooking(){}
 
 	virtual std::string getName() const;
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const;
@@ -336,6 +327,7 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const;
 
+	virtual CraftHashType getHashType() const;
 	virtual u64 getHash(CraftHashType type) const;
 
 	virtual void initHash(IGameDef *gamedef);
@@ -350,7 +342,7 @@ private:
 	// Recipe item name
 	std::string recipe_name;
 	// bool indicating if initHash has been called already
-	bool hash_inited = false;
+	bool hash_inited;
 	// Time in seconds
 	float cooktime;
 	// Replacement items for decrementInput()
@@ -364,13 +356,18 @@ private:
 class CraftDefinitionFuel: public CraftDefinition
 {
 public:
-	CraftDefinitionFuel() = delete;
-	CraftDefinitionFuel(
-		const std::string &recipe_,
-		float burntime_,
-		const CraftReplacements &replacements_);
-
-	virtual ~CraftDefinitionFuel() = default;
+	CraftDefinitionFuel():
+		recipe(""), hash_inited(false), burntime()
+	{}
+	CraftDefinitionFuel(const std::string &recipe_,
+			float burntime_,
+			const CraftReplacements &replacements_):
+		recipe(recipe_),
+		hash_inited(false),
+		burntime(burntime_),
+		replacements(replacements_)
+	{}
+	virtual ~CraftDefinitionFuel(){}
 
 	virtual std::string getName() const;
 	virtual bool check(const CraftInput &input, IGameDef *gamedef) const;
@@ -379,6 +376,7 @@ public:
 	virtual void decrementInput(CraftInput &input,
 		std::vector<ItemStack> &output_replacements, IGameDef *gamedef) const;
 
+	virtual CraftHashType getHashType() const;
 	virtual u64 getHash(CraftHashType type) const;
 
 	virtual void initHash(IGameDef *gamedef);
@@ -391,7 +389,7 @@ private:
 	// Recipe item name
 	std::string recipe_name;
 	// bool indicating if initHash has been called already
-	bool hash_inited = false;
+	bool hash_inited;
 	// Time in seconds
 	float burntime;
 	// Replacement items for decrementInput()
@@ -404,25 +402,13 @@ private:
 class ICraftDefManager
 {
 public:
-	ICraftDefManager() = default;
-	virtual ~ICraftDefManager() = default;
+	ICraftDefManager(){}
+	virtual ~ICraftDefManager(){}
 
-	/**
-	 * The main crafting function.
-	 *
-	 * @param input The input grid.
-	 * @param output CraftOutput where the result is placed.
-	 * @param output_replacements A vector of ItemStacks where replacements are
-	 * placed if they cannot be placed in the input. Replacements can be placed
-	 * in the input if the stack of the replaced item has a count of 1.
-	 * @param decrementInput If true, consume or replace input items.
-	 * @param gamedef
-	 * @return true if a result was found, otherwise false.
-	 */
+	// The main crafting function
 	virtual bool getCraftResult(CraftInput &input, CraftOutput &output,
 			std::vector<ItemStack> &output_replacements,
 			bool decrementInput, IGameDef *gamedef) const=0;
-
 	virtual std::vector<CraftDefinition*> getCraftRecipes(CraftOutput &output,
 			IGameDef *gamedef, unsigned limit=0) const=0;
 
@@ -433,8 +419,8 @@ public:
 class IWritableCraftDefManager : public ICraftDefManager
 {
 public:
-	IWritableCraftDefManager() = default;
-	virtual ~IWritableCraftDefManager() = default;
+	IWritableCraftDefManager(){}
+	virtual ~IWritableCraftDefManager(){}
 
 	// The main crafting function
 	virtual bool getCraftResult(CraftInput &input, CraftOutput &output,
@@ -443,8 +429,9 @@ public:
 	virtual std::vector<CraftDefinition*> getCraftRecipes(CraftOutput &output,
 			IGameDef *gamedef, unsigned limit=0) const=0;
 
-	virtual bool clearCraftsByOutput(const CraftOutput &output, IGameDef *gamedef) = 0;
-	virtual bool clearCraftsByInput(const CraftInput &input, IGameDef *gamedef) = 0;
+	virtual bool clearCraftRecipesByOutput(const CraftOutput &output, IGameDef *gamedef) = 0;
+	virtual bool clearCraftRecipesByInput(CraftMethod craft_method,
+			unsigned int craft_grid_width, const std::vector<std::string> &recipe, IGameDef *gamedef) = 0;
 
 	// Print crafting recipes for debugging
 	virtual std::string dump() const=0;
@@ -461,3 +448,6 @@ public:
 };
 
 IWritableCraftDefManager* createCraftDefManager();
+
+#endif
+

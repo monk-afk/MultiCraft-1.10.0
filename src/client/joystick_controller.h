@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef JOYSTICK_HEADER
+#define JOYSTICK_HEADER
 
 #include "irrlichttypes_extrabloated.h"
 #include "keys.h"
@@ -51,8 +52,7 @@ struct JoystickCombination {
 
 struct JoystickButtonCmb : public JoystickCombination {
 
-	JoystickButtonCmb() = default;
-
+	JoystickButtonCmb() {}
 	JoystickButtonCmb(GameKeyType key, u32 filter_mask, u32 compare_mask) :
 		filter_mask(filter_mask),
 		compare_mask(compare_mask)
@@ -60,7 +60,7 @@ struct JoystickButtonCmb : public JoystickCombination {
 		this->key = key;
 	}
 
-	virtual ~JoystickButtonCmb() = default;
+	virtual ~JoystickButtonCmb() {}
 
 	virtual bool isTriggered(const irr::SEvent::SJoystickEvent &ev) const;
 
@@ -70,8 +70,7 @@ struct JoystickButtonCmb : public JoystickCombination {
 
 struct JoystickAxisCmb : public JoystickCombination {
 
-	JoystickAxisCmb() = default;
-
+	JoystickAxisCmb() {}
 	JoystickAxisCmb(GameKeyType key, u16 axis_to_compare, int direction, s16 thresh) :
 		axis_to_compare(axis_to_compare),
 		direction(direction),
@@ -80,9 +79,9 @@ struct JoystickAxisCmb : public JoystickCombination {
 		this->key = key;
 	}
 
-	virtual ~JoystickAxisCmb() = default;
+	virtual ~JoystickAxisCmb() {}
 
-	bool isTriggered(const irr::SEvent::SJoystickEvent &ev) const override;
+	virtual bool isTriggered(const irr::SEvent::SJoystickEvent &ev) const;
 
 	u16 axis_to_compare;
 
@@ -96,7 +95,7 @@ struct JoystickLayout {
 	std::vector<JoystickButtonCmb> button_keys;
 	std::vector<JoystickAxisCmb> axis_keys;
 	JoystickAxisLayout axes[JA_COUNT];
-	s16 axes_deadzone;
+	s16 axes_dead_border;
 };
 
 class JoystickController {
@@ -111,32 +110,37 @@ public:
 
 	bool wasKeyDown(GameKeyType b)
 	{
-		bool r = m_past_keys_pressed[b];
-		m_past_keys_pressed[b] = false;
+		bool r = m_past_pressed_keys[b];
+		m_past_pressed_keys[b] = false;
 		return r;
+	}
+	bool getWasKeyDown(GameKeyType b)
+	{
+		return m_past_pressed_keys[b];
+	}
+	void clearWasKeyDown(GameKeyType b)
+	{
+		m_past_pressed_keys[b] = false;
 	}
 
 	bool wasKeyReleased(GameKeyType b)
 	{
-		return m_keys_released[b];
+		bool r = m_past_released_keys[b];
+		m_past_released_keys[b] = false;
+		return r;
+	}
+	bool getWasKeyReleased(GameKeyType b)
+	{
+		return m_past_pressed_keys[b];
 	}
 	void clearWasKeyReleased(GameKeyType b)
 	{
-		m_keys_released[b] = false;
-	}
-
-	bool wasKeyPressed(GameKeyType b)
-	{
-		return m_keys_pressed[b];
-	}
-	void clearWasKeyPressed(GameKeyType b)
-	{
-		m_keys_pressed[b] = false;
+		m_past_pressed_keys[b] = false;
 	}
 
 	bool isKeyDown(GameKeyType b)
 	{
-		return m_keys_down[b];
+		return m_pressed_keys[b];
 	}
 
 	s16 getAxis(JoystickAxis axis)
@@ -155,59 +159,16 @@ private:
 
 	s16 m_axes_vals[JA_COUNT];
 
-	u8 m_joystick_id = 0;
+	u8 m_joystick_id;
 
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_down;
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_pressed;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_pressed_keys;
 
 	f32 m_internal_time;
 
 	f32 m_past_pressed_time[KeyType::INTERNAL_ENUM_COUNT];
 
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_keys_pressed;
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_released;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_pressed_keys;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_released_keys;
 };
 
-#if defined(_IRR_COMPILE_WITH_SDL_DEVICE_)
-class SDLGameController
-{
-private:
-	void handleMouseMovement(int x, int y);
-	void handleTriggerLeft(s16 value);
-	void handleTriggerRight(s16 value);
-	void handleMouseClickLeft(bool pressed);
-	void handleMouseClickRight(bool pressed);
-	void handleButton(const SEvent &event);
-	void handleButtonInMenu(const SEvent &event);
-	void handlePlayerMovement(int x, int y);
-	void handleCameraOrientation(int x, int y);
-	void sendEvent(const SEvent &event);
-
-	int m_button_states = 0;
-	u32 m_mouse_time = 0;
-	s16 m_trigger_left_value = 0;
-	s16 m_trigger_right_value = 0;
-	s16 m_move_sideward = 0;
-	s16 m_move_forward = 0;
-	s16 m_camera_yaw = 0;
-	s16 m_camera_pitch = 0;
-
-	static bool m_active;
-	static bool m_cursor_visible;
-	bool m_is_fake_event = false;
-
-public:
-	void translateEvent(const SEvent &event);
-
-	s16 getMoveSideward() { return m_move_sideward; }
-	s16 getMoveForward() { return m_move_forward; }
-	s16 getCameraYaw() { return m_camera_yaw; }
-	s16 getCameraPitch() { return m_camera_pitch; }
-
-	void setActive(bool value) { m_active = value; }
-	static bool isActive() { return m_active; }
-	void setCursorVisible(bool visible) { m_cursor_visible = visible; }
-	static bool isCursorVisible() { return m_cursor_visible; }
-	bool isFakeEvent() { return m_is_fake_event; }
-};
 #endif

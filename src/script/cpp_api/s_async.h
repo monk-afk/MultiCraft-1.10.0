@@ -17,21 +17,17 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
-
-#include "IrrCompileConfig.h"
+#ifndef CPP_API_ASYNC_EVENTS_HEADER
+#define CPP_API_ASYNC_EVENTS_HEADER
 
 #include <vector>
 #include <deque>
 #include <map>
 
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-#include "threading/sdl_semaphore.h"
-#include "threading/sdl_thread.h"
-#else
-#include "threading/semaphore.h"
 #include "threading/thread.h"
-#endif
+#include "threading/mutex.h"
+#include "threading/semaphore.h"
+#include "debug.h"
 #include "lua.h"
 #include "cpp_api/s_base.h"
 
@@ -44,18 +40,24 @@ class AsyncEngine;
 // Data required to queue a job
 struct LuaJobInfo
 {
-	LuaJobInfo() = default;
+	LuaJobInfo() :
+		serializedFunction(""),
+		serializedParams(""),
+		serializedResult(""),
+		id(0),
+		valid(false)
+	{}
 
 	// Function to be called in async environment
-	std::string serializedFunction = "";
+	std::string serializedFunction;
 	// Parameter to be passed to function
-	std::string serializedParams = "";
+	std::string serializedParams;
 	// Result of function call
-	std::string serializedResult = "";
+	std::string serializedResult;
 	// JobID used to identify a job and match it to callback
-	unsigned int id = 0;
+	unsigned int id;
 
-	bool valid = false;
+	bool valid;
 };
 
 // Asynchronous working environment
@@ -67,7 +69,7 @@ public:
 	void *run();
 
 private:
-	AsyncEngine *jobDispatcher = nullptr;
+	AsyncEngine *jobDispatcher;
 };
 
 // Asynchornous thread and job management
@@ -75,7 +77,7 @@ class AsyncEngine {
 	friend class AsyncWorkerThread;
 	typedef void (*StateInitializer)(lua_State *L, int top);
 public:
-	AsyncEngine() = default;
+	AsyncEngine();
 	~AsyncEngine();
 
 	/**
@@ -105,6 +107,12 @@ public:
 	 */
 	void step(lua_State *L);
 
+	/**
+	 * Push a list of finished jobs onto the stack
+	 * @param L The Lua stack
+	 */
+	void pushFinishedJobs(lua_State *L);
+
 protected:
 	/**
 	 * Get a Job from queue to be processed
@@ -130,22 +138,22 @@ protected:
 
 private:
 	// Variable locking the engine against further modification
-	bool initDone = false;
+	bool initDone;
 
 	// Internal store for registred state initializers
 	std::vector<StateInitializer> stateInitializers;
 
 	// Internal counter to create job IDs
-	unsigned int jobIdCounter = 0;
+	unsigned int jobIdCounter;
 
 	// Mutex to protect job queue
-	std::mutex jobQueueMutex;
+	Mutex jobQueueMutex;
 
 	// Job queue
 	std::deque<LuaJobInfo> jobQueue;
 
 	// Mutex to protect result queue
-	std::mutex resultQueueMutex;
+	Mutex resultQueueMutex;
 	// Result queue
 	std::deque<LuaJobInfo> resultQueue;
 
@@ -155,3 +163,5 @@ private:
 	// Counter semaphore for job dispatching
 	Semaphore jobQueueCounter;
 };
+
+#endif // CPP_API_ASYNC_EVENTS_HEADER

@@ -20,7 +20,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "inventory.h"
 #include "serialization.h"
 #include "debug.h"
-#include <algorithm>
 #include <sstream>
 #include "log.h"
 #include "itemdef.h"
@@ -36,9 +35,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 static content_t content_translate_from_19_to_internal(content_t c_from)
 {
-	for (const auto &tt : trans_table_19) {
-		if(tt[1] == c_from) {
-			return tt[0];
+	for(u32 i=0; i<sizeof(trans_table_19)/sizeof(trans_table_19[0]); i++)
+	{
+		if(trans_table_19[i][1] == c_from)
+		{
+			return trans_table_19[i][0];
 		}
 	}
 	return c_from;
@@ -56,36 +57,37 @@ ItemStack::ItemStack(const std::string &name_, u16 count_,
 		count = 1;
 }
 
-void ItemStack::serialize(std::ostream &os, bool serialize_meta) const
+void ItemStack::serialize(std::ostream &os) const
 {
-	if (empty())
+	DSTACK(FUNCTION_NAME);
+
+	if(empty())
 		return;
 
 	// Check how many parts of the itemstring are needed
 	int parts = 1;
+	if(count != 1)
+		parts = 2;
+	if(wear != 0)
+		parts = 3;
 	if (!metadata.empty())
 		parts = 4;
-	else if (wear != 0)
-		parts = 3;
-	else if (count != 1)
-		parts = 2;
 
-	os << serializeJsonStringIfNeeded(name);
-	if (parts >= 2)
-		os << " " << count;
-	if (parts >= 3)
-		os << " " << wear;
+	os<<serializeJsonStringIfNeeded(name);
+	if(parts >= 2)
+		os<<" "<<count;
+	if(parts >= 3)
+		os<<" "<<wear;
 	if (parts >= 4) {
 		os << " ";
-		if (serialize_meta)
-			metadata.serialize(os);
-		else
-			os << "<metadata size=" << metadata.size() << ">";
+		metadata.serialize(os);
 	}
 }
 
 void ItemStack::deSerialize(std::istream &is, IItemDefManager *itemdef)
 {
+	DSTACK(FUNCTION_NAME);
+
 	clear();
 
 	// Read name
@@ -114,7 +116,7 @@ void ItemStack::deSerialize(std::istream &is, IItemDefManager *itemdef)
 		NameIdMapping legacy_nimap;
 		content_mapnode_get_name_id_mapping(&legacy_nimap);
 		legacy_nimap.getName(material, name);
-		if(name.empty())
+		if(name == "")
 			name = "unknown_block";
 		if (itemdef)
 			name = itemdef->getAlias(name);
@@ -134,7 +136,7 @@ void ItemStack::deSerialize(std::istream &is, IItemDefManager *itemdef)
 		NameIdMapping legacy_nimap;
 		content_mapnode_get_name_id_mapping(&legacy_nimap);
 		legacy_nimap.getName(material, name);
-		if(name.empty())
+		if(name == "")
 			name = "unknown_block";
 		if (itemdef)
 			name = itemdef->getAlias(name);
@@ -205,20 +207,21 @@ void ItemStack::deSerialize(std::istream &is, IItemDefManager *itemdef)
 			// Read the count
 			std::string count_str;
 			std::getline(is, count_str, ' ');
-			if (count_str.empty()) {
+			if(count_str.empty())
+			{
 				count = 1;
 				break;
 			}
-
-			count = stoi(count_str);
+			else
+				count = stoi(count_str);
 
 			// Read the wear
 			std::string wear_str;
 			std::getline(is, wear_str, ' ');
 			if(wear_str.empty())
 				break;
-
-			wear = stoi(wear_str);
+			else
+				wear = stoi(wear_str);
 
 			// Read metadata
 			metadata.deSerialize(is);
@@ -243,38 +246,19 @@ void ItemStack::deSerialize(const std::string &str, IItemDefManager *itemdef)
 	deSerialize(is, itemdef);
 }
 
-std::string ItemStack::getItemString(bool include_meta) const
+std::string ItemStack::getItemString() const
 {
 	std::ostringstream os(std::ios::binary);
-	serialize(os, include_meta);
+	serialize(os);
 	return os.str();
 }
 
-std::string ItemStack::getDescription(IItemDefManager *itemdef) const
-{
-	std::string desc = metadata.getString("description");
-	if (desc.empty())
-		desc = getDefinition(itemdef).description;
-	return desc.empty() ? name : desc;
-}
 
-std::string ItemStack::getShortDescription(IItemDefManager *itemdef) const
+ItemStack ItemStack::addItem(const ItemStack &newitem_,
+		IItemDefManager *itemdef)
 {
-	std::string desc = metadata.getString("short_description");
-	if (desc.empty())
-		desc = getDefinition(itemdef).short_description;
-	if (!desc.empty())
-		return desc;
-	// no short_description because of old server version or modified builtin
-	// return first line of description
-	std::stringstream sstr(getDescription(itemdef));
-	std::getline(sstr, desc, '\n');
-	return desc;
-}
+	ItemStack newitem = newitem_;
 
-
-ItemStack ItemStack::addItem(ItemStack newitem, IItemDefManager *itemdef)
-{
 	// If the item is empty or the position invalid, bail out
 	if(newitem.empty())
 	{
@@ -310,10 +294,11 @@ ItemStack ItemStack::addItem(ItemStack newitem, IItemDefManager *itemdef)
 	return newitem;
 }
 
-bool ItemStack::itemFits(ItemStack newitem,
+bool ItemStack::itemFits(const ItemStack &newitem_,
 		ItemStack *restitem,
 		IItemDefManager *itemdef) const
 {
+	ItemStack newitem = newitem_;
 
 	// If the item is empty or the position invalid, bail out
 	if(newitem.empty())
@@ -337,6 +322,7 @@ bool ItemStack::itemFits(ItemStack newitem,
 		newitem.clear();
 	}
 	// Else the item does not fit fully. Return the rest.
+	// the rest.
 	else
 	{
 		u16 freespace = freeSpace(itemdef);
@@ -345,7 +331,6 @@ bool ItemStack::itemFits(ItemStack newitem,
 
 	if(restitem)
 		*restitem = newitem;
-
 	return newitem.empty();
 }
 
@@ -387,60 +372,63 @@ ItemStack ItemStack::peekItem(u32 peekcount) const
 InventoryList::InventoryList(const std::string &name, u32 size, IItemDefManager *itemdef):
 	m_name(name),
 	m_size(size),
+	m_width(0),
 	m_itemdef(itemdef)
 {
 	clearItems();
+}
+
+InventoryList::~InventoryList()
+{
 }
 
 void InventoryList::clearItems()
 {
 	m_items.clear();
 
-	for (u32 i=0; i < m_size; i++) {
-		m_items.emplace_back();
+	for(u32 i=0; i<m_size; i++)
+	{
+		m_items.push_back(ItemStack());
 	}
 
-	setModified();
+	//setDirty(true);
 }
 
 void InventoryList::setSize(u32 newsize)
 {
-	if (newsize == m_items.size())
-		return;
-
-	m_items.resize(newsize);
+	if(newsize != m_items.size())
+		m_items.resize(newsize);
 	m_size = newsize;
-	setModified();
 }
 
 void InventoryList::setWidth(u32 newwidth)
 {
 	m_width = newwidth;
-	setModified();
 }
 
 void InventoryList::setName(const std::string &name)
 {
 	m_name = name;
-	setModified();
 }
 
-void InventoryList::serialize(std::ostream &os, bool incremental) const
+void InventoryList::serialize(std::ostream &os) const
 {
 	//os.imbue(std::locale("C"));
 
 	os<<"Width "<<m_width<<"\n";
 
-	for (const auto &item : m_items) {
-		if (item.empty()) {
+	for(u32 i=0; i<m_items.size(); i++)
+	{
+		const ItemStack &item = m_items[i];
+		if(item.empty())
+		{
 			os<<"Empty";
-		} else {
+		}
+		else
+		{
 			os<<"Item ";
 			item.serialize(os);
 		}
-		// TODO: Implement this:
-		// if (!incremental || item.checkModified())
-		// os << "Keep";
 		os<<"\n";
 	}
 
@@ -450,12 +438,13 @@ void InventoryList::serialize(std::ostream &os, bool incremental) const
 void InventoryList::deSerialize(std::istream &is)
 {
 	//is.imbue(std::locale("C"));
-	setModified();
 
+	clearItems();
 	u32 item_i = 0;
 	m_width = 0;
 
-	while (is.good()) {
+	for(;;)
+	{
 		std::string line;
 		std::getline(is, line, '\n');
 
@@ -465,14 +454,17 @@ void InventoryList::deSerialize(std::istream &is)
 		std::string name;
 		std::getline(iss, name, ' ');
 
-		if (name == "EndInventoryList" || name == "end") {
-			// If partial incremental: Clear leftover items (should not happen!)
-			for (size_t i = item_i; i < m_items.size(); ++i)
-				m_items[i].clear();
-			return;
+		if(name == "EndInventoryList")
+		{
+			break;
 		}
-
-		if (name == "Width") {
+		// This is a temporary backwards compatibility fix
+		else if(name == "end")
+		{
+			break;
+		}
+		else if(name == "Width")
+		{
 			iss >> m_width;
 			if (iss.fail())
 				throw SerializationError("incorrect width property");
@@ -490,18 +482,8 @@ void InventoryList::deSerialize(std::istream &is)
 			if(item_i > getSize() - 1)
 				throw SerializationError("too many items");
 			m_items[item_i++].clear();
-		} else if (name == "Keep") {
-			++item_i; // Unmodified item
 		}
 	}
-
-	// Contents given to deSerialize() were not terminated properly: throw error.
-
-	std::ostringstream ss;
-	ss << "Malformatted inventory list. list="
-		<< m_name << ", read " << item_i << " of " << getSize()
-		<< " ItemStacks." << std::endl;
-	throw SerializationError(ss.str());
 }
 
 InventoryList::InventoryList(const InventoryList &other)
@@ -529,9 +511,14 @@ bool InventoryList::operator == (const InventoryList &other) const
 		return false;
 	if(m_name != other.m_name)
 		return false;
-	for (u32 i = 0; i < m_items.size(); i++)
-		if (m_items[i] != other.m_items[i])
+	for(u32 i=0; i<m_items.size(); i++)
+	{
+		ItemStack s1 = m_items[i];
+		ItemStack s2 = other.m_items[i];
+		if(s1.name != s2.name || s1.wear!= s2.wear || s1.count != s2.count ||
+				s1.metadata != s2.metadata)
 			return false;
+	}
 
 	return true;
 }
@@ -554,8 +541,9 @@ u32 InventoryList::getWidth() const
 u32 InventoryList::getUsedSlots() const
 {
 	u32 num = 0;
-	for (const auto &m_item : m_items) {
-		if (!m_item.empty())
+	for(u32 i=0; i<m_items.size(); i++)
+	{
+		if(!m_items[i].empty())
 			num++;
 	}
 	return num;
@@ -585,7 +573,7 @@ ItemStack InventoryList::changeItem(u32 i, const ItemStack &newitem)
 
 	ItemStack olditem = m_items[i];
 	m_items[i] = newitem;
-	setModified();
+	//setDirty(true);
 	return olditem;
 }
 
@@ -593,7 +581,6 @@ void InventoryList::deleteItem(u32 i)
 {
 	assert(i < m_items.size()); // Pre-condition
 	m_items[i].clear();
-	setModified();
 }
 
 ItemStack InventoryList::addItem(const ItemStack &newitem_)
@@ -641,8 +628,8 @@ ItemStack InventoryList::addItem(u32 i, const ItemStack &newitem)
 		return newitem;
 
 	ItemStack leftover = m_items[i].addItem(newitem, m_itemdef);
-	if (leftover != newitem)
-		setModified();
+	//if(leftover != newitem)
+	//	setDirty(true);
 	return leftover;
 }
 
@@ -675,17 +662,20 @@ bool InventoryList::roomForItem(const ItemStack &item_) const
 bool InventoryList::containsItem(const ItemStack &item, bool match_meta) const
 {
 	u32 count = item.count;
-	if (count == 0)
+	if(count == 0)
 		return true;
-
-	for (auto i = m_items.rbegin(); i != m_items.rend(); ++i) {
-		if (count == 0)
+	for(std::vector<ItemStack>::const_reverse_iterator
+			i = m_items.rbegin();
+			i != m_items.rend(); ++i)
+	{
+		if(count == 0)
 			break;
-		if (i->name == item.name && (!match_meta || (i->metadata == item.metadata))) {
+		if (i->name == item.name
+				&& (!match_meta || (i->metadata == item.metadata))) {
 			if (i->count >= count)
 				return true;
-
-			count -= i->count;
+			else
+				count -= i->count;
 		}
 	}
 	return false;
@@ -694,20 +684,18 @@ bool InventoryList::containsItem(const ItemStack &item, bool match_meta) const
 ItemStack InventoryList::removeItem(const ItemStack &item)
 {
 	ItemStack removed;
-	for (auto i = m_items.rbegin(); i != m_items.rend(); ++i) {
-		if (i->name == item.name) {
+	for(std::vector<ItemStack>::reverse_iterator
+			i = m_items.rbegin();
+			i != m_items.rend(); ++i)
+	{
+		if(i->name == item.name)
+		{
 			u32 still_to_remove = item.count - removed.count;
-			ItemStack leftover = removed.addItem(i->takeItem(still_to_remove),
-					m_itemdef);
-			// Allow oversized stacks
-			removed.count += leftover.count;
-
-			if (removed.count == item.count)
+			removed.addItem(i->takeItem(still_to_remove), m_itemdef);
+			if(removed.count == item.count)
 				break;
 		}
 	}
-	if (!removed.empty())
-		setModified();
 	return removed;
 }
 
@@ -717,8 +705,8 @@ ItemStack InventoryList::takeItem(u32 i, u32 takecount)
 		return ItemStack();
 
 	ItemStack taken = m_items[i].takeItem(takecount);
-	if (!taken.empty())
-		setModified();
+	//if(!taken.empty())
+	//	setDirty(true);
 	return taken;
 }
 
@@ -734,29 +722,43 @@ void InventoryList::moveItemSomewhere(u32 i, InventoryList *dest, u32 count)
 	if (item1.empty())
 		return;
 
-	ItemStack leftover;
-	leftover = dest->addItem(item1);
-
-	if (!leftover.empty()) {
-		// Add the remaining part back to the source item
-		addItem(i, leftover);
+	// Try to add the item to destination list
+	u32 dest_size = dest->getSize();
+	// First try all the non-empty slots
+	for (u32 dest_i = 0; dest_i < dest_size; dest_i++) {
+		if (!m_items[dest_i].empty()) {
+			item1 = dest->addItem(dest_i, item1);
+			if (item1.empty()) return;
+		}
 	}
+
+	// Then try all the empty ones
+	for (u32 dest_i = 0; dest_i < dest_size; dest_i++) {
+		if (m_items[dest_i].empty()) {
+			item1 = dest->addItem(dest_i, item1);
+			if (item1.empty()) return;
+		}
+	}
+
+	// If we reach this, the item was not fully added
+	// Add the remaining part back to the source item
+	addItem(i, item1);
 }
 
 u32 InventoryList::moveItem(u32 i, InventoryList *dest, u32 dest_i,
 		u32 count, bool swap_if_needed, bool *did_swap)
 {
-	if (this == dest && i == dest_i)
+	if(this == dest && i == dest_i)
 		return count;
 
 	// Take item from source list
 	ItemStack item1;
-	if (count == 0)
+	if(count == 0)
 		item1 = changeItem(i, ItemStack());
 	else
 		item1 = takeItem(i, count);
 
-	if (item1.empty())
+	if(item1.empty())
 		return 0;
 
 	// Try to add the item to destination list
@@ -764,7 +766,8 @@ u32 InventoryList::moveItem(u32 i, InventoryList *dest, u32 dest_i,
 	item1 = dest->addItem(dest_i, item1);
 
 	// If something is returned, the item was not fully added
-	if (!item1.empty()) {
+	if(!item1.empty())
+	{
 		// If olditem is returned, nothing was added.
 		bool nothing_added = (item1.count == oldcount);
 
@@ -801,22 +804,37 @@ Inventory::~Inventory()
 
 void Inventory::clear()
 {
-	for (auto &m_list : m_lists) {
-		delete m_list;
+	m_dirty = true;
+	for(u32 i=0; i<m_lists.size(); i++)
+	{
+		delete m_lists[i];
 	}
 	m_lists.clear();
-	setModified();
+}
+
+void Inventory::clearContents()
+{
+	m_dirty = true;
+	for(u32 i=0; i<m_lists.size(); i++)
+	{
+		InventoryList *list = m_lists[i];
+		for(u32 j=0; j<list->getSize(); j++)
+		{
+			list->deleteItem(j);
+		}
+	}
 }
 
 Inventory::Inventory(IItemDefManager *itemdef)
 {
+	m_dirty = false;
 	m_itemdef = itemdef;
-	setModified();
 }
 
 Inventory::Inventory(const Inventory &other)
 {
 	*this = other;
+	m_dirty = false;
 }
 
 Inventory & Inventory::operator = (const Inventory &other)
@@ -824,12 +842,13 @@ Inventory & Inventory::operator = (const Inventory &other)
 	// Gracefully handle self assignment
 	if(this != &other)
 	{
+		m_dirty = true;
 		clear();
 		m_itemdef = other.m_itemdef;
-		for (InventoryList *list : other.m_lists) {
-			m_lists.push_back(new InventoryList(*list));
+		for(u32 i=0; i<other.m_lists.size(); i++)
+		{
+			m_lists.push_back(new InventoryList(*other.m_lists[i]));
 		}
-		setModified();
 	}
 	return *this;
 }
@@ -847,16 +866,13 @@ bool Inventory::operator == (const Inventory &other) const
 	return true;
 }
 
-void Inventory::serialize(std::ostream &os, bool incremental) const
+void Inventory::serialize(std::ostream &os) const
 {
-	//std::cout << "Serialize " << (int)incremental << ", n=" << m_lists.size() << std::endl;
-	for (const InventoryList *list : m_lists) {
-		if (!incremental || list->checkModified()) {
-			os << "List " << list->getName() << " " << list->getSize() << "\n";
-			list->serialize(os, incremental);
-		} else {
-			os << "KeepList " << list->getName() << "\n";
-		}
+	for(u32 i=0; i<m_lists.size(); i++)
+	{
+		InventoryList *list = m_lists[i];
+		os<<"List "<<list->getName()<<" "<<list->getSize()<<"\n";
+		list->serialize(os);
 	}
 
 	os<<"EndInventory\n";
@@ -864,10 +880,10 @@ void Inventory::serialize(std::ostream &os, bool incremental) const
 
 void Inventory::deSerialize(std::istream &is)
 {
-	std::vector<InventoryList *> new_lists;
-	new_lists.reserve(m_lists.size());
+	clear();
 
-	while (is.good()) {
+	for(;;)
+	{
 		std::string line;
 		std::getline(is, line, '\n');
 
@@ -876,68 +892,38 @@ void Inventory::deSerialize(std::istream &is)
 		std::string name;
 		std::getline(iss, name, ' ');
 
-		if (name == "EndInventory" || name == "end") {
-			// Remove all lists that were not sent
-			for (auto &list : m_lists) {
-				if (std::find(new_lists.begin(), new_lists.end(), list) != new_lists.end())
-					continue;
-
-				delete list;
-				list = nullptr;
-				setModified();
-			}
-			m_lists.erase(std::remove(m_lists.begin(), m_lists.end(),
-					nullptr), m_lists.end());
-			return;
+		if(name == "EndInventory")
+		{
+			break;
 		}
-
-		if (name == "List") {
+		// This is a temporary backwards compatibility fix
+		else if(name == "end")
+		{
+			break;
+		}
+		else if(name == "List")
+		{
 			std::string listname;
 			u32 listsize;
 
 			std::getline(iss, listname, ' ');
 			iss>>listsize;
 
-			InventoryList *list = getList(listname);
-			bool create_new = !list;
-			if (create_new)
-				list = new InventoryList(listname, listsize, m_itemdef);
-			else
-				list->setSize(listsize);
+			InventoryList *list = new InventoryList(listname, listsize, m_itemdef);
 			list->deSerialize(is);
 
-			new_lists.push_back(list);
-			if (create_new)
-				m_lists.push_back(list);
-
-		} else if (name == "KeepList") {
-			// Incrementally sent list
-			std::string listname;
-			std::getline(iss, listname, ' ');
-
-			InventoryList *list = getList(listname);
-			if (list) {
-				new_lists.push_back(list);
-			} else {
-				errorstream << "Inventory::deSerialize(): Tried to keep list '" <<
-					listname << "' which is non-existent." << std::endl;
-			}
+			m_lists.push_back(list);
 		}
-		// Any additional fields will throw errors when received by a client
-		// older than PROTOCOL_VERSION 38
+		else
+		{
+			throw SerializationError("invalid inventory specifier: " + name);
+		}
 	}
-
-	// Contents given to deSerialize() were not terminated properly: throw error.
-
-	std::ostringstream ss;
-	ss << "Malformatted inventory (damaged?). "
-		<< m_lists.size() << " lists read." << std::endl;
-	throw SerializationError(ss.str());
 }
 
 InventoryList * Inventory::addList(const std::string &name, u32 size)
 {
-	setModified();
+	m_dirty = true;
 	s32 i = getListIndex(name);
 	if(i != -1)
 	{
@@ -945,35 +931,34 @@ InventoryList * Inventory::addList(const std::string &name, u32 size)
 		{
 			delete m_lists[i];
 			m_lists[i] = new InventoryList(name, size, m_itemdef);
-			m_lists[i]->setModified();
 		}
 		return m_lists[i];
 	}
+	else
+	{
+		//don't create list with invalid name
+		if (name.find(" ") != std::string::npos) return NULL;
 
-
-	//don't create list with invalid name
-	if (name.find(' ') != std::string::npos)
-		return nullptr;
-
-	InventoryList *list = new InventoryList(name, size, m_itemdef);
-	list->setModified();
-	m_lists.push_back(list);
-	return list;
+		InventoryList *list = new InventoryList(name, size, m_itemdef);
+		m_lists.push_back(list);
+		return list;
+	}
 }
 
 InventoryList * Inventory::getList(const std::string &name)
 {
 	s32 i = getListIndex(name);
 	if(i == -1)
-		return nullptr;
+		return NULL;
 	return m_lists[i];
 }
 
 std::vector<const InventoryList*> Inventory::getLists()
 {
 	std::vector<const InventoryList*> lists;
-	lists.reserve(m_lists.size());
-	for (auto list : m_lists) {
+	for(u32 i=0; i<m_lists.size(); i++)
+	{
+		InventoryList *list = m_lists[i];
 		lists.push_back(list);
 	}
 	return lists;
@@ -984,18 +969,17 @@ bool Inventory::deleteList(const std::string &name)
 	s32 i = getListIndex(name);
 	if(i == -1)
 		return false;
-
-	setModified();
+	m_dirty = true;
 	delete m_lists[i];
 	m_lists.erase(m_lists.begin() + i);
 	return true;
 }
 
-const InventoryList *Inventory::getList(const std::string &name) const
+const InventoryList * Inventory::getList(const std::string &name) const
 {
 	s32 i = getListIndex(name);
 	if(i == -1)
-		return nullptr;
+		return NULL;
 	return m_lists[i];
 }
 

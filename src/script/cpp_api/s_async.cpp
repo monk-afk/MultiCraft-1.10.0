@@ -17,8 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
 
 extern "C" {
 #include "lua.h"
@@ -34,12 +34,20 @@ extern "C" {
 #include "common/c_internal.h"
 
 /******************************************************************************/
+AsyncEngine::AsyncEngine() :
+	initDone(false),
+	jobIdCounter(0)
+{
+}
+
+/******************************************************************************/
 AsyncEngine::~AsyncEngine()
 {
 
 	// Request all threads to stop
-	for (AsyncWorkerThread *workerThread : workerThreads) {
-		workerThread->stop();
+	for (std::vector<AsyncWorkerThread *>::iterator it = workerThreads.begin();
+			it != workerThreads.end(); ++it) {
+		(*it)->stop();
 	}
 
 
@@ -50,13 +58,15 @@ AsyncEngine::~AsyncEngine()
 	}
 
 	// Wait for threads to finish
-	for (AsyncWorkerThread *workerThread : workerThreads) {
-		workerThread->wait();
+	for (std::vector<AsyncWorkerThread *>::iterator it = workerThreads.begin();
+			it != workerThreads.end(); ++it) {
+		(*it)->wait();
 	}
 
 	// Force kill all threads
-	for (AsyncWorkerThread *workerThread : workerThreads) {
-		delete workerThread;
+	for (std::vector<AsyncWorkerThread *>::iterator it = workerThreads.begin();
+			it != workerThreads.end(); ++it) {
+		delete *it;
 	}
 
 	jobQueueMutex.lock();
@@ -158,10 +168,40 @@ void AsyncEngine::step(lua_State *L)
 }
 
 /******************************************************************************/
+void AsyncEngine::pushFinishedJobs(lua_State* L) {
+	// Result Table
+	MutexAutoLock l(resultQueueMutex);
+
+	unsigned int index = 1;
+	lua_createtable(L, resultQueue.size(), 0);
+	int top = lua_gettop(L);
+
+	while (!resultQueue.empty()) {
+		LuaJobInfo jobDone = resultQueue.front();
+		resultQueue.pop_front();
+
+		lua_createtable(L, 0, 2);  // Pre-allocate space for two map fields
+		int top_lvl2 = lua_gettop(L);
+
+		lua_pushstring(L, "jobid");
+		lua_pushnumber(L, jobDone.id);
+		lua_settable(L, top_lvl2);
+
+		lua_pushstring(L, "retval");
+		lua_pushlstring(L, jobDone.serializedResult.data(),
+			jobDone.serializedResult.size());
+		lua_settable(L, top_lvl2);
+
+		lua_rawseti(L, top, index++);
+	}
+}
+
+/******************************************************************************/
 void AsyncEngine::prepareEnvironment(lua_State* L, int top)
 {
-	for (StateInitializer &stateInitializer : stateInitializers) {
-		stateInitializer(L, top);
+	for (std::vector<StateInitializer>::iterator it = stateInitializers.begin();
+			it != stateInitializers.end(); it++) {
+		(*it)(L, top);
 	}
 }
 
@@ -169,7 +209,7 @@ void AsyncEngine::prepareEnvironment(lua_State* L, int top)
 AsyncWorkerThread::AsyncWorkerThread(AsyncEngine* jobDispatcher,
 		const std::string &name) :
 	Thread(name),
-	ScriptApiBase(ScriptingType::Async),
+	ScriptApiBase(),
 	jobDispatcher(jobDispatcher)
 {
 	lua_State *L = getStack();

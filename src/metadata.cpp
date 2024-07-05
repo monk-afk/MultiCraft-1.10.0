@@ -18,7 +18,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "metadata.h"
+#include "exceptions.h"
+#include "gamedef.h"
 #include "log.h"
+#include <sstream>
+#include "constants.h" // MAP_BLOCKSIZE
+#include <sstream>
 
 /*
 	Metadata
@@ -27,12 +32,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 void Metadata::clear()
 {
 	m_stringvars.clear();
-	m_modified = true;
 }
 
 bool Metadata::empty() const
 {
-	return m_stringvars.empty();
+	return m_stringvars.size() == 0;
 }
 
 size_t Metadata::size() const
@@ -50,8 +54,10 @@ bool Metadata::operator==(const Metadata &other) const
 	if (size() != other.size())
 		return false;
 
-	for (const auto &sv : m_stringvars) {
-		if (!other.contains(sv.first) || other.getString(sv.first) != sv.second)
+	for (StringMap::const_iterator it = m_stringvars.begin();
+			it != m_stringvars.end(); ++it) {
+		if (!other.contains(it->first) ||
+				other.getString(it->first) != it->second)
 			return false;
 	}
 
@@ -67,18 +73,6 @@ const std::string &Metadata::getString(const std::string &name, u16 recursion) c
 	}
 
 	return resolveString(it->second, recursion);
-}
-
-bool Metadata::getStringToRef(
-		const std::string &name, std::string &str, u16 recursion) const
-{
-	StringMap::const_iterator it = m_stringvars.find(name);
-	if (it == m_stringvars.end()) {
-		return false;
-	}
-
-	str = resolveString(it->second, recursion);
-	return true;
 }
 
 /**
@@ -101,7 +95,6 @@ bool Metadata::setString(const std::string &name, const std::string &var)
 	}
 
 	m_stringvars[name] = var;
-	m_modified = true;
 	return true;
 }
 
@@ -109,7 +102,7 @@ const std::string &Metadata::resolveString(const std::string &str, u16 recursion
 {
 	if (recursion <= 1 && str.substr(0, 2) == "${" && str[str.length() - 1] == '}') {
 		return getString(str.substr(2, str.length() - 3), recursion + 1);
+	} else {
+		return str;
 	}
-
-	return str;
 }

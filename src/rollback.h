@@ -17,14 +17,15 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef ROLLBACK_HEADER
+#define ROLLBACK_HEADER
 
 #include <string>
 #include "irr_v3d.h"
 #include "rollback_interface.h"
 #include <list>
 #include <vector>
-#include "sqlite3.h"
+//#include "sqlite3.h"
 
 class IGameDef;
 
@@ -62,7 +63,7 @@ private:
 	bool createTables();
 	bool initDatabase();
 	bool registerRow(const ActionRow & row);
-	const std::list<ActionRow> actionRowsFromSelect(sqlite3_stmt * stmt);
+	//const std::list<ActionRow> actionRowsFromSelect(sqlite3_stmt * stmt);
 	ActionRow actionRowFromRollbackAction(const RollbackAction & action);
 	const std::list<RollbackAction> rollbackActionsFromActionRows(
 			const std::list<ActionRow> & rows);
@@ -79,15 +80,15 @@ private:
 		time_t suspect_t, v3s16 action_p, time_t action_t);
 
 
-	IGameDef *gamedef = nullptr;
+	IGameDef * gamedef;
 
 	std::string current_actor;
-	bool current_actor_is_guess = false;
+	bool current_actor_is_guess;
 
 	std::list<RollbackAction> action_todisk_buffer;
 	std::list<RollbackAction> action_latest_buffer;
 
-	std::string database_path;
+	/*std::string database_path;
 	sqlite3 * db;
 	sqlite3_stmt * stmt_insert;
 	sqlite3_stmt * stmt_replace;
@@ -97,8 +98,10 @@ private:
 	sqlite3_stmt * stmt_knownActor_select;
 	sqlite3_stmt * stmt_knownActor_insert;
 	sqlite3_stmt * stmt_knownNode_select;
-	sqlite3_stmt * stmt_knownNode_insert;
+	sqlite3_stmt * stmt_knownNode_insert;*/
 
 	std::vector<Entity> knownActors;
 	std::vector<Entity> knownNodes;
 };
+
+#endif

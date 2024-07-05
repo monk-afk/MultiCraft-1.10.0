@@ -17,22 +17,15 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
-
-#include "IrrCompileConfig.h"
+#ifndef TERMINAL_CHAT_CONSOLE_H
+#define TERMINAL_CHAT_CONSOLE_H
 
 #include "chat.h"
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-#include "threading/sdl_thread.h"
-#else
 #include "threading/thread.h"
-#endif
-#include "util/container.h"
+#include "chat_interface.h"
 #include "log.h"
+
 #include <sstream>
-
-
-struct ChatInterface;
 
 class TermLogOutput : public ILogOutput {
 public:
@@ -59,7 +52,13 @@ class TerminalChatConsole : public Thread {
 public:
 
 	TerminalChatConsole() :
-		Thread("TerminalThread")
+		Thread("TerminalThread"),
+		m_log_level(LL_ACTION),
+		m_utf8_bytes_to_wait(0),
+		m_kill_requested(NULL),
+		m_esc_mode(false),
+		m_game_time(0),
+		m_time_of_day(0)
 	{}
 
 	void setup(
@@ -75,7 +74,7 @@ public:
 	virtual void *run();
 
 	// Highly required!
-	void clearKillStatus() { m_kill_requested = nullptr; }
+	void clearKillStatus() { m_kill_requested = NULL; }
 
 	void stopAndWaitforThread();
 
@@ -103,10 +102,10 @@ private:
 		~CursesInitHelper() { cons->deInitOfCurses(); }
 	};
 
-	int m_log_level = LL_ACTION;
+	int m_log_level;
 	std::string m_nick;
 
-	u8 m_utf8_bytes_to_wait = 0;
+	u8 m_utf8_bytes_to_wait;
 	std::string m_pending_utf8_bytes;
 
 	std::list<std::string> m_nicks;
@@ -115,16 +114,18 @@ private:
 	int m_rows;
 	bool m_can_draw_text;
 
-	bool *m_kill_requested = nullptr;
+	bool *m_kill_requested;
 	ChatBackend m_chat_backend;
 	ChatInterface *m_chat_interface;
 
 	TermLogOutput m_log_output;
 
-	bool m_esc_mode = false;
+	bool m_esc_mode;
 
-	u64 m_game_time = 0;
-	u32 m_time_of_day = 0;
+	u64 m_game_time;
+	u32 m_time_of_day;
 };
 
 extern TerminalChatConsole g_term_console;
+
+#endif

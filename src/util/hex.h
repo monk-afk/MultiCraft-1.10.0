@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef HEX_HEADER
+#define HEX_HEADER
 
 #include <string>
 
@@ -26,8 +27,6 @@ static const char hex_chars[] = "0123456789abcdef";
 static inline std::string hex_encode(const char *data, unsigned int data_size)
 {
 	std::string ret;
-	ret.reserve(data_size * 2);
-
 	char buf2[3];
 	buf2[2] = '\0';
 
@@ -58,3 +57,5 @@ static inline bool hex_digit_decode(char hexdigit, unsigned char &value)
 		return false;
 	return true;
 }
+
+#endif

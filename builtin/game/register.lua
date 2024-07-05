@@ -107,6 +107,9 @@ function core.register_entity(name, prototype)
 	prototype.mod_origin = core.get_current_modname() or "??"
 end
 
+-- Intllib
+Sl = intllib.make_gettext_pair("locales")
+
 function core.register_item(name, itemdef)
 	-- Check name
 	if name == nil then
@@ -134,9 +137,6 @@ function core.register_item(name, itemdef)
 			core.log("warning", "Node 'light_source' value exceeds maximum," ..
 				" limiting to maximum: " ..name)
 		end
-		if itemdef.light_source == nil then
-			itemdef.light_source = 0
-		end
 		setmetatable(itemdef, {__index = core.nodedef_default})
 		core.registered_nodes[itemdef.name] = itemdef
 	elseif itemdef.type == "craft" then
@@ -154,6 +154,11 @@ function core.register_item(name, itemdef)
 	-- Flowing liquid uses param2
 	if itemdef.type == "node" and itemdef.liquidtype == "flowing" then
 		itemdef.paramtype2 = "flowingliquid"
+	end
+
+	-- Intllib
+	if itemdef.description and itemdef.description ~= "" then
+		itemdef.description = Sl(itemdef.description)
 	end
 
 	-- BEGIN Legacy stuff
@@ -259,18 +264,6 @@ function core.register_tool(name, tooldef)
 	end
 	-- END Legacy stuff
 
-	-- This isn't just legacy, but more of a convenience feature
-	local toolcaps = tooldef.tool_capabilities
-	if toolcaps and toolcaps.punch_attack_uses == nil then
-		for _, cap in pairs(toolcaps.groupcaps or {}) do
-			local level = (cap.maxlevel or 0) - 1
-			if (cap.uses or 0) ~= 0 and level >= 0 then
-				toolcaps.punch_attack_uses = cap.uses * (3 ^ level)
-				break
-			end
-		end
-	end
-
 	core.register_item(name, tooldef)
 end
 
@@ -323,6 +316,13 @@ for name in pairs(forbidden_item_names) do
 	register_alias_raw(name, "")
 end
 
+
+-- Obsolete:
+-- Aliases for core.register_alias (how ironic...)
+-- core.alias_node = core.register_alias
+-- core.alias_tool = core.register_alias
+-- core.alias_craftitem = core.register_alias
+
 --
 -- Built-in node definitions. Also defined in C.
 --
@@ -371,25 +371,17 @@ core.register_node(":ignore", {
 	drop = "",
 	drowning = 0,
 	groups = {not_in_creative_inventory=1},
-	on_place = function(itemstack, placer, pointed_thing)
-		core.chat_send_player(
-				placer:get_player_name(),
-				core.colorize("#FF0000",
-				"You can't place 'ignore' nodes!"))
-		return ""
-	end,
 })
 
 -- The hand (bare definition)
-local creative_mode = core.settings:get_bool("creative_mode")
 core.register_item(":", {
 	type = "none",
-	wield_image = "wieldhand.png",
+	wield_image = "blank.png",
 	tool_capabilities = {
 		full_punch_interval = 0.5,
-		damage_groups = {fleshy = creative_mode and 5 or 1}
+		damage_groups = {fleshy = core.settings:get_bool("creative_mode") and 5 or 1}
 	},
-	groups = {not_in_creative_inventory=1},
+	groups = {not_in_creative_inventory = 1}
 })
 
 
@@ -412,7 +404,8 @@ end
 
 
 function core.add_group(name, adding)
-	local addgroup = table.copy(core.registered_items[name].groups) or {}
+	local addgroup = {}
+	addgroup = table.copy(core.registered_items[name].groups)
 	for k, v in pairs(adding) do
 		addgroup[k] = v
 	end
@@ -432,7 +425,7 @@ function core.run_callbacks(callbacks, mode, ...)
 			return false
 		end
 	end
-	local ret = nil
+	local ret
 	for i = 1, cb_len do
 		local origin = core.callback_origins[callbacks[i]]
 		if origin then
@@ -535,25 +528,6 @@ local function make_registration_wrap(reg_fn_name, clear_fn_name)
 	return list
 end
 
-local function make_wrap_deregistration(reg_fn, clear_fn, list)
-	local unregister = function (key)
-		if type(key) ~= "string" then
-			error("key is not a string", 2)
-		end
-		if not list[key] then
-			error("Attempt to unregister non-existent element - '" .. key .. "'", 2)
-		end
-		local temporary_list = table.copy(list)
-		clear_fn()
-		for k,v in pairs(temporary_list) do
-			if key ~= k then
-				reg_fn(v)
-			end
-		end
-	end
-	return unregister
-end
-
 core.registered_on_player_hpchanges = { modifiers = { }, loggers = { } }
 
 function core.registered_on_player_hpchange(player, hp_change, reason)
@@ -592,14 +566,9 @@ core.registered_biomes      = make_registration_wrap("register_biome",      "cle
 core.registered_ores        = make_registration_wrap("register_ore",        "clear_registered_ores")
 core.registered_decorations = make_registration_wrap("register_decoration", "clear_registered_decorations")
 
-core.unregister_biome = make_wrap_deregistration(core.register_biome,
-		core.clear_registered_biomes, core.registered_biomes)
-
 core.registered_on_chat_messages, core.register_on_chat_message = make_registration()
-core.registered_on_chatcommands, core.register_on_chatcommand = make_registration()
 core.registered_globalsteps, core.register_globalstep = make_registration()
 core.registered_playerevents, core.register_playerevent = make_registration()
-core.registered_on_mods_loaded, core.register_on_mods_loaded = make_registration()
 core.registered_on_shutdown, core.register_on_shutdown = make_registration()
 core.registered_on_punchnodes, core.register_on_punchnode = make_registration()
 core.registered_on_placenodes, core.register_on_placenode = make_registration()
@@ -620,17 +589,8 @@ core.registered_on_item_eats, core.register_on_item_eat = make_registration()
 core.registered_on_punchplayers, core.register_on_punchplayer = make_registration()
 core.registered_on_priv_grant, core.register_on_priv_grant = make_registration()
 core.registered_on_priv_revoke, core.register_on_priv_revoke = make_registration()
-core.registered_on_authplayers, core.register_on_authplayer = make_registration()
-core.registered_can_bypass_userlimit, core.register_can_bypass_userlimit = make_registration()
-core.registered_on_modchannel_message, core.register_on_modchannel_message = make_registration()
-core.registered_on_player_inventory_actions, core.register_on_player_inventory_action = make_registration()
-core.registered_allow_player_inventory_actions, core.register_allow_player_inventory_action = make_registration()
-core.registered_on_rightclickplayers, core.register_on_rightclickplayer = make_registration()
 
-
---
 -- Player step iteration
---
 
 players_per_step = tonumber(core.settings:get("players_per_globalstep")) or 20
 

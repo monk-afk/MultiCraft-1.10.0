@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef S_ENV_H_
+#define S_ENV_H_
 
 #include "cpp_api/s_base.h"
 #include "irr_v3d.h"
@@ -43,3 +44,5 @@ public:
 
 	void initializeEnvironment(ServerEnvironment *env);
 };
+
+#endif /* S_ENV_H_ */

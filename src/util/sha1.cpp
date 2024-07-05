@@ -92,9 +92,9 @@ void SHA1::process()
 	e = H4;
 	// copy and expand the message block
 	for( t = 0; t < 16; t++ ) W[t] = (bytes[t*4] << 24)
-									+(bytes[t*4 + 1] << 16)
-									+(bytes[t*4 + 2] << 8)
-									+ bytes[t*4 + 3];
+	                                 +(bytes[t*4 + 1] << 16)
+	                                 +(bytes[t*4 + 2] << 8)
+	                                 + bytes[t*4 + 3];
 	for(; t< 80; t++ ) W[t] = lrot( W[t-3]^W[t-8]^W[t-14]^W[t-16], 1 );
 
 	/* main loop */
@@ -170,10 +170,10 @@ unsigned char* SHA1::getDigest()
 	addBytes( "\x80", 1 );
 
 	unsigned char footer[64] = {
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	// block has no room for 8-byte filesize, so finish it
 	if( unprocessedBytes > 56 )
 		addBytes( (char*)footer, 64 - unprocessedBytes);

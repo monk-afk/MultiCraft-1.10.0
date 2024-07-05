@@ -20,26 +20,23 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "lua_api/l_storage.h"
 #include "l_internal.h"
-#include "content/mods.h"
+#include "mods.h"
 #include "server.h"
 
 int ModApiStorage::l_get_mod_storage(lua_State *L)
 {
-	lua_getglobal(L, "core");
-	lua_getfield(L, -1, "get_current_modname");
-	lua_call(L, 0, 1);
+	lua_rawgeti(L, LUA_REGISTRYINDEX, CUSTOM_RIDX_CURRENT_MOD_NAME);
 	if (!lua_isstring(L, -1)) {
 		return 0;
 	}
 
-	std::string mod_name = readParam<std::string>(L, -1);
+	std::string mod_name = lua_tostring(L, -1);
 
 	ModMetadata *store = new ModMetadata(mod_name);
 	if (IGameDef *gamedef = getGameDef(L)) {
 		store->load(gamedef->getModStoragePath());
 		gamedef->registerModStorage(store);
 	} else {
-		delete store;
 		assert(false); // this should not happen
 	}
 
@@ -58,11 +55,6 @@ void ModApiStorage::Initialize(lua_State *L, int top)
 StorageRef::StorageRef(ModMetadata *object):
 	m_object(object)
 {
-}
-
-StorageRef::~StorageRef()
-{
-	delete m_object;
 }
 
 void StorageRef::create(lua_State *L, ModMetadata *object)
@@ -142,8 +134,6 @@ void StorageRef::clearMeta()
 
 const char StorageRef::className[] = "StorageRef";
 const luaL_Reg StorageRef::methods[] = {
-	luamethod(MetaDataRef, contains),
-	luamethod(MetaDataRef, get),
 	luamethod(MetaDataRef, get_string),
 	luamethod(MetaDataRef, set_string),
 	luamethod(MetaDataRef, get_int),

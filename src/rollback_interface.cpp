@@ -36,8 +36,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 RollbackNode::RollbackNode(Map *map, v3s16 p, IGameDef *gamedef)
 {
-	const NodeDefManager *ndef = gamedef->ndef();
-	MapNode n = map->getNode(p);
+	INodeDefManager *ndef = gamedef->ndef();
+	MapNode n = map->getNodeNoEx(p);
 	name = ndef->get(n).name;
 	param1 = n.param1;
 	param2 = n.param2;
@@ -90,7 +90,7 @@ bool RollbackAction::isImportant(IGameDef *gamedef) const
 	// If metadata differs, action is always important
 	if(n_old.meta != n_new.meta)
 		return true;
-	const NodeDefManager *ndef = gamedef->ndef();
+	INodeDefManager *ndef = gamedef->ndef();
 	// Both are of the same name, so a single definition is needed
 	const ContentFeatures &def = ndef->get(n_old.name);
 	// If the type is flowing liquid, action is not important
@@ -128,23 +128,18 @@ bool RollbackAction::applyRevert(Map *map, InventoryManager *imgr, IGameDef *gam
 		case TYPE_NOTHING:
 			return true;
 		case TYPE_SET_NODE: {
-			const NodeDefManager *ndef = gamedef->ndef();
+			INodeDefManager *ndef = gamedef->ndef();
 			// Make sure position is loaded from disk
 			map->emergeBlock(getContainerPos(p, MAP_BLOCKSIZE), false);
 			// Check current node
-			MapNode current_node = map->getNode(p);
+			MapNode current_node = map->getNodeNoEx(p);
 			std::string current_name = ndef->get(current_node).name;
 			// If current node not the new node, it's bad
 			if (current_name != n_new.name) {
 				return false;
 			}
 			// Create rollback node
-			content_t id = CONTENT_IGNORE;
-			if (!ndef->getId(n_old.name, id)) {
-				// The old node is not registered
-				return false;
-			}
-			MapNode n(id, n_old.param1, n_old.param2);
+			MapNode n(ndef, n_old.name, n_old.param1, n_old.param2);
 			// Set rollback node
 			try {
 				if (!map->addNodeWithEvent(p, n)) {
@@ -173,10 +168,17 @@ bool RollbackAction::applyRevert(Map *map, InventoryManager *imgr, IGameDef *gam
 					meta->deSerialize(is, 1); // FIXME: version bump??
 				}
 				// Inform other things that the meta data has changed
+				v3s16 blockpos = getContainerPos(p, MAP_BLOCKSIZE);
 				MapEditEvent event;
 				event.type = MEET_BLOCK_NODE_METADATA_CHANGED;
-				event.p = p;
-				map->dispatchEvent(event);
+				event.p = blockpos;
+				map->dispatchEvent(&event);
+				// Set the block to be saved
+				MapBlock *block = map->getBlockNoCreateNoEx(blockpos);
+				if (block) {
+					block->raiseModified(MOD_STATE_WRITE_NEEDED,
+						MOD_REASON_REPORT_META_CHANGE);
+				}
 			} catch (InvalidPositionException &e) {
 				infostream << "RollbackAction::applyRevert(): "
 					<< "InvalidPositionException: " << e.what()
@@ -208,7 +210,7 @@ bool RollbackAction::applyRevert(Map *map, InventoryManager *imgr, IGameDef *gam
 					<< inventory_location << std::endl;
 				return false;
 			}
-
+			
 			// If item was added, take away item, otherwise add removed item
 			if (inventory_add) {
 				// Silently ignore different current item

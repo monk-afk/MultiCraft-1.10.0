@@ -40,66 +40,69 @@ core.register_privilege("privs", "Can modify privileges")
 
 core.register_privilege("teleport", {
 	description = "Can teleport self",
-	give_to_singleplayer = creative,
+	give_to_singleplayer = creative
 })
 core.register_privilege("bring", {
 	description = "Can teleport other players",
-	give_to_singleplayer = false,
+	give_to_singleplayer = false
 })
 core.register_privilege("settime", {
 	description = "Can set the time of day using /time",
-	give_to_singleplayer = creative,
+	give_to_singleplayer = creative
 })
 core.register_privilege("server", {
 	description = "Can do server maintenance stuff",
 	give_to_singleplayer = false,
-	give_to_admin = true,
+	give_to_admin = true
 })
 core.register_privilege("protection_bypass", {
 	description = "Can bypass node protection in the world",
-	give_to_singleplayer = false,
+	give_to_singleplayer = false
 })
 core.register_privilege("ban", {
 	description = "Can ban and unban players",
 	give_to_singleplayer = false,
-	give_to_admin = true,
+	give_to_admin = true
 })
 core.register_privilege("kick", {
 	description = "Can kick players",
 	give_to_singleplayer = false,
-	give_to_admin = true,
+	give_to_admin = true
 })
 core.register_privilege("give", {
 	description = "Can use /give and /giveme",
-	give_to_singleplayer = false,
+	give_to_singleplayer = false
 })
 core.register_privilege("password", {
 	description = "Can use /setpassword and /clearpassword",
-	give_to_singleplayer = false,
-	give_to_admin = true,
+	give_to_singleplayer = false
 })
 core.register_privilege("fly", {
 	description = "Can use fly mode",
-	give_to_singleplayer = creative,
+	give_to_singleplayer = creative
 })
 core.register_privilege("fast", {
 	description = "Can use fast mode",
-	give_to_singleplayer = creative,
+	give_to_singleplayer = creative
 })
 core.register_privilege("noclip", {
 	description = "Can fly through solid nodes using noclip mode",
-	give_to_singleplayer = false,
+	give_to_singleplayer = false
 })
 core.register_privilege("rollback", {
 	description = "Can use the rollback functionality",
-	give_to_singleplayer = false,
+	give_to_singleplayer = false
+})
+core.register_privilege("zoom", {
+	description = "Can zoom the camera",
+	give_to_singleplayer = creative
 })
 core.register_privilege("debug", {
 	description = "Allows enabling various debug options that may affect gameplay",
 	give_to_singleplayer = false,
+	give_to_admin = true
 })
-
-core.register_can_bypass_userlimit(function(name, ip)
-	local privs = core.get_player_privs(name)
-	return privs["server"] or privs["ban"] or privs["privs"] or privs["password"]
-end)
+core.register_privilege("weather", {
+	description = "Allows changing the weather",
+	give_to_singleplayer = creative
+})

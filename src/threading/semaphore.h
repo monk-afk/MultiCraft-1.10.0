@@ -17,11 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
-
-#include "IrrCompileConfig.h"
-
-#ifndef _IRR_COMPILE_WITH_SDL_DEVICE_
+#ifndef THREADING_SEMAPHORE_H
+#define THREADING_SEMAPHORE_H
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -39,8 +36,6 @@ public:
 	Semaphore(int val = 0);
 	~Semaphore();
 
-	DISABLE_CLASS_COPY(Semaphore);
-
 	void post(unsigned int num = 1);
 	void wait();
 	bool wait(unsigned int time_ms);
@@ -53,6 +48,8 @@ private:
 #else
 	sem_t semaphore;
 #endif
+
+	DISABLE_CLASS_COPY(Semaphore);
 };
 
 #endif

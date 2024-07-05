@@ -23,7 +23,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "settings.h"
 #include "cpp_api/s_internal.h"
 #include "lua_api/l_areastore.h"
-#include "lua_api/l_auth.h"
 #include "lua_api/l_base.h"
 #include "lua_api/l_craft.h"
 #include "lua_api/l_env.h"
@@ -31,12 +30,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "lua_api/l_item.h"
 #include "lua_api/l_itemstackmeta.h"
 #include "lua_api/l_mapgen.h"
-#include "lua_api/l_modchannels.h"
 #include "lua_api/l_nodemeta.h"
 #include "lua_api/l_nodetimer.h"
 #include "lua_api/l_noise.h"
 #include "lua_api/l_object.h"
-#include "lua_api/l_playermeta.h"
 #include "lua_api/l_particles.h"
 #include "lua_api/l_rollback.h"
 #include "lua_api/l_server.h"
@@ -50,8 +47,7 @@ extern "C" {
 #include "lualib.h"
 }
 
-ServerScripting::ServerScripting(Server* server):
-		ScriptApiBase(ScriptingType::Server)
+ServerScripting::ServerScripting(Server* server)
 {
 	setGameDef(server);
 
@@ -62,10 +58,6 @@ ServerScripting::ServerScripting(Server* server):
 
 	if (g_settings->getBool("secure.enable_security")) {
 		initializeSecurity();
-	} else {
-		warningstream << "\\!/ Mod security should never be disabled, as it allows any mod to "
-				<< "access the host machine."
-				<< "Mods should use minetest.request_insecure_environment() instead \\!/" << std::endl;
 	}
 
 	lua_getglobal(L, "core");
@@ -99,31 +91,29 @@ void ServerScripting::InitializeModApi(lua_State *L, int top)
 	LuaPerlinNoiseMap::Register(L);
 	LuaPseudoRandom::Register(L);
 	LuaPcgRandom::Register(L);
-	LuaRaycast::Register(L);
 	LuaSecureRandom::Register(L);
 	LuaVoxelManip::Register(L);
 	NodeMetaRef::Register(L);
 	NodeTimerRef::Register(L);
 	ObjectRef::Register(L);
-	PlayerMetaRef::Register(L);
 	LuaSettings::Register(L);
 	StorageRef::Register(L);
-	ModChannelRef::Register(L);
 
 	// Initialize mod api modules
-	ModApiAuth::Initialize(L, top);
 	ModApiCraft::Initialize(L, top);
 	ModApiEnvMod::Initialize(L, top);
 	ModApiInventory::Initialize(L, top);
 	ModApiItemMod::Initialize(L, top);
 	ModApiMapgen::Initialize(L, top);
 	ModApiParticles::Initialize(L, top);
-#if USE_SQLITE
 	ModApiRollback::Initialize(L, top);
-#endif
 	ModApiServer::Initialize(L, top);
 	ModApiUtil::Initialize(L, top);
 	ModApiHttp::Initialize(L, top);
 	ModApiStorage::Initialize(L, top);
-	ModApiChannels::Initialize(L, top);
+}
+
+void log_deprecated(const std::string &message)
+{
+	log_deprecated(NULL, message);
 }

@@ -25,7 +25,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "settings.h"
 #include "util/numeric.h"
 #include "util/string.h"
-#include "chat_interface.h"
 
 TerminalChatConsole g_term_console;
 
@@ -348,8 +347,7 @@ void TerminalChatConsole::step(int ch)
 
 		std::wstring error_message = utf8_to_wide(Logger::getLevelLabel(p.first));
 		if (!g_settings->getBool("disable_escape_sequences")) {
-			error_message = std::wstring(L"\x1b(c@red)").append(error_message)
-				.append(L"\x1b(c@white)");
+			error_message = L"\x1b(c@red)" + error_message + L"\x1b(c@white)";
 		}
 		m_chat_backend.addMessage(error_message, utf8_to_wide(p.second));
 	}
@@ -398,7 +396,7 @@ void TerminalChatConsole::step(int ch)
 	minutes = (float)minutes / 1000 * 60;
 
 	if (m_game_time)
-		printw(" | Game %ld Time of day %02d:%02d ",
+		printw(" | Game %d Time of day %02d:%02d ",
 			m_game_time, hours, minutes);
 
 	// draw text
@@ -440,7 +438,8 @@ void TerminalChatConsole::draw_text()
 		const ChatFormattedLine& line = buf.getFormattedLine(row);
 		if (line.fragments.empty())
 			continue;
-		for (const ChatFormattedFragment &fragment : line.fragments) {
+		for (u32 i = 0; i < line.fragments.size(); ++i) {
+			const ChatFormattedFragment& fragment = line.fragments[i];
 			addstr(wide_to_utf8(fragment.text.getString()).c_str());
 		}
 	}

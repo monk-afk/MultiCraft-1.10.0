@@ -17,16 +17,18 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef SERVER_SCRIPTING_H_
+#define SERVER_SCRIPTING_H_
+
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_entity.h"
 #include "cpp_api/s_env.h"
 #include "cpp_api/s_inventory.h"
-#include "cpp_api/s_modchannels.h"
 #include "cpp_api/s_node.h"
 #include "cpp_api/s_player.h"
 #include "cpp_api/s_server.h"
 #include "cpp_api/s_security.h"
+#include "util/basic_macros.h"
 
 /*****************************************************************************/
 /* Scripting <-> Server Game Interface                                       */
@@ -37,7 +39,6 @@ class ServerScripting:
 		public ScriptApiDetached,
 		public ScriptApiEntity,
 		public ScriptApiEnv,
-		public ScriptApiModChannels,
 		public ScriptApiNode,
 		public ScriptApiPlayer,
 		public ScriptApiServer,
@@ -50,4 +51,9 @@ public:
 
 private:
 	void InitializeModApi(lua_State *L, int top);
+	DISABLE_CLASS_COPY(ServerScripting);
 };
+
+void log_deprecated(const std::string &message);
+
+#endif /* SCRIPTING_GAME_H_ */

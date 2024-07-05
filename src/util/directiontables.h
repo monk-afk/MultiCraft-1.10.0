@@ -17,21 +17,18 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef UTIL_DIRECTIONTABLES_HEADER
+#define UTIL_DIRECTIONTABLES_HEADER
 
-#include "irrlichttypes.h"
-#include "irr_v3d.h"
+#include "../irrlichttypes.h"
+#include "../irr_v3d.h"
 
 extern const v3s16 g_6dirs[6];
-
-extern const v3s16 g_7dirs[7];
 
 extern const v3s16 g_26dirs[26];
 
 // 26th is (0,0,0)
 extern const v3s16 g_27dirs[27];
-
-extern const u8 wallmountedToFacedir(u8 index);
 
 /// Direction in the 6D format. g_27dirs contains corresponding vectors.
 /// Here P means Positive, N stands for Negative.
@@ -87,3 +84,5 @@ enum DirectionWallmounted {
 	DWM_ZP,
 	DWM_ZN,
 };
+
+#endif

@@ -23,7 +23,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "debug.h"
 #include "gettime.h"
 #include "porting.h"
-#include "settings.h"
 #include "config.h"
 #include "exceptions.h"
 #include "util/numeric.h"
@@ -34,6 +33,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#ifdef __IOS__
+#include "ioswrap.h"
+#endif
 
 const int BUFFER_LENGTH = 256;
 
@@ -97,7 +99,16 @@ LogBuffer verbose_buf(g_logger, LL_VERBOSE);
 std::ostream *dout_con_ptr = &null_stream;
 std::ostream *derr_con_ptr = &verbosestream;
 
-// Common streams
+// Server
+std::ostream *dout_server_ptr = &infostream;
+std::ostream *derr_server_ptr = &errorstream;
+
+#ifndef SERVER
+// Client
+std::ostream *dout_client_ptr = &infostream;
+std::ostream *derr_client_ptr = &errorstream;
+#endif
+
 std::ostream rawstream(&raw_buf);
 std::ostream dstream(&none_buf);
 std::ostream errorstream(&error_buf);
@@ -140,6 +151,29 @@ class AndroidSystemLogOutput : public ICombinedLogOutput {
 };
 
 AndroidSystemLogOutput g_android_log_output;
+
+#endif
+
+// iOS
+#ifdef __IOS__
+
+class IosSystemLogOutput : public ICombinedLogOutput {
+public:
+    IosSystemLogOutput()
+    {
+        g_logger.addOutput(this);
+    }
+    ~IosSystemLogOutput()
+    {
+        g_logger.removeOutput(this);
+    }
+    void logRaw(LogLevel lev, const std::string &line)
+    {
+        ioswrap_log(line.c_str());
+    }
+};
+
+IosSystemLogOutput g_ios_log_output;
 
 #endif
 
@@ -215,14 +249,14 @@ void Logger::setLevelSilenced(LogLevel lev, bool silenced)
 
 void Logger::registerThread(const std::string &name)
 {
-	std::thread::id id = std::this_thread::get_id();
+	threadid_t id = thr_get_current_thread_id();
 	MutexAutoLock lock(m_mutex);
 	m_thread_names[id] = name;
 }
 
 void Logger::deregisterThread()
 {
-	std::thread::id id = std::this_thread::get_id();
+	threadid_t id = thr_get_current_thread_id();
 	MutexAutoLock lock(m_mutex);
 	m_thread_names.erase(id);
 }
@@ -243,13 +277,11 @@ const std::string Logger::getLevelLabel(LogLevel lev)
 	return names[lev];
 }
 
-LogColor Logger::color_mode = LOG_COLOR_AUTO;
-
 const std::string Logger::getThreadName()
 {
-	std::map<std::thread::id, std::string>::const_iterator it;
+	std::map<threadid_t, std::string>::const_iterator it;
 
-	std::thread::id id = std::this_thread::get_id();
+	threadid_t id = thr_get_current_thread_id();
 	it = m_thread_names.find(id);
 	if (it != m_thread_names.end())
 		return it->second;
@@ -302,136 +334,19 @@ void Logger::logToOutputs(LogLevel lev, const std::string &combined,
 //// *LogOutput methods
 ////
 
-void FileLogOutput::setFile(const std::string &filename, s64 file_size_max)
+void FileLogOutput::open(const std::string &filename)
 {
-	// Only move debug.txt if there is a valid maximum file size
-	bool is_too_large = false;
-	if (file_size_max > 0) {
-		std::ifstream ifile(filename, std::ios::binary | std::ios::ate);
-		is_too_large = ifile.tellg() > file_size_max;
-		ifile.close();
-	}
-
-	if (is_too_large) {
-		std::string filename_secondary = filename + ".1";
-		actionstream << "The log file grew too big; it is moved to " <<
-			filename_secondary << std::endl;
-		remove(filename_secondary.c_str());
-		rename(filename.c_str(), filename_secondary.c_str());
-	}
-	m_stream.open(filename, std::ios::app | std::ios::ate);
-
+	m_stream.open(filename.c_str(), std::ios::app | std::ios::ate);
 	if (!m_stream.good())
 		throw FileNotGoodException("Failed to open log file " +
 			filename + ": " + strerror(errno));
 	m_stream << "\n\n"
-		"-------------" << std::endl <<
-		"  Separator" << std::endl <<
-		"-------------\n" << std::endl;
+		   "-------------" << std::endl
+		<< "  Separator" << std::endl
+		<< "-------------\n" << std::endl;
 }
 
-void StreamLogOutput::logRaw(LogLevel lev, const std::string &line)
-{
-	bool colored_message = (Logger::color_mode == LOG_COLOR_ALWAYS) ||
-		(Logger::color_mode == LOG_COLOR_AUTO && is_tty);
-#if defined(__MACH__) && defined(__APPLE__)
-	if (colored_message) {
-		switch (lev) {
-		case LL_ERROR:
-			// error is red
-			m_stream << "📕 ";
-			break;
-		case LL_WARNING:
-			// warning is yellow
-			m_stream << "📙 ";
-			break;
-		case LL_INFO:
-			// info is a green
-			m_stream << "📗 ";
-			break;
-		case LL_VERBOSE:
-			// verbose is blue
-			m_stream << "📘 ";
-			break;
-		default:
-			// action is white
-			m_stream << "📔 ";
-		}
-	}
 
-	m_stream << line << std::endl;
-#else
-	if (colored_message) {
-		switch (lev) {
-		case LL_ERROR:
-			// error is red
-			m_stream << "\033[91m";
-			break;
-		case LL_WARNING:
-			// warning is yellow
-			m_stream << "\033[93m";
-			break;
-		case LL_INFO:
-			// info is a bit dark
-			m_stream << "\033[37m";
-			break;
-		case LL_VERBOSE:
-			// verbose is darker than info
-			m_stream << "\033[2m";
-			break;
-		default:
-			// action is white
-			colored_message = false;
-		}
-	}
-
-	m_stream << line << std::endl;
-
-	if (colored_message) {
-		// reset to white color
-		m_stream << "\033[0m";
-	}
-#endif
-}
-
-void LogOutputBuffer::updateLogLevel()
-{
-	const std::string &conf_loglev = g_settings->get("chat_log_level");
-	LogLevel log_level = Logger::stringToLevel(conf_loglev);
-	if (log_level == LL_MAX) {
-		warningstream << "Supplied unrecognized chat_log_level; "
-			"showing none." << std::endl;
-		log_level = LL_NONE;
-	}
-
-	m_logger.removeOutput(this);
-	m_logger.addOutputMaxLevel(this, log_level);
-}
-
-void LogOutputBuffer::logRaw(LogLevel lev, const std::string &line)
-{
-	std::string color;
-
-	if (!g_settings->getBool("disable_escape_sequences")) {
-		switch (lev) {
-		case LL_ERROR: // red
-			color = "\x1b(c@#F00)";
-			break;
-		case LL_WARNING: // yellow
-			color = "\x1b(c@#EE0)";
-			break;
-		case LL_INFO: // grey
-			color = "\x1b(c@#BBB)";
-			break;
-		case LL_VERBOSE: // dark grey
-			color = "\x1b(c@#888)";
-			break;
-		default: break;
-		}
-	}
-
-	m_buffer.push(color.append(line));
-}
 
 ////
 //// *Buffer methods

@@ -18,12 +18,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef CLIENTOPCODES_HEADER
+#define CLIENTOPCODES_HEADER
 
-#include "client/client.h"
+#include "client.h"
 #include "networkprotocol.h"
-
-class NetworkPacket;
+#include "networkpacket.h"
 
 enum ToClientConnectionState {
 	TOCLIENT_STATE_NOT_CONNECTED,
@@ -48,3 +48,5 @@ struct ServerCommandFactory
 extern const ToClientCommandHandler toClientCommandTable[TOCLIENT_NUM_MSG_TYPES];
 
 extern const ServerCommandFactory serverCommandFactoryTable[TOSERVER_NUM_MSG_TYPES];
+
+#endif

@@ -17,10 +17,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef UTIL_TIMETAKER_HEADER
+#define UTIL_TIMETAKER_HEADER
 
-#include "irrlichttypes.h"
-#include "gettime.h"
+#include "../irrlichttypes.h"
+#include "../gettime.h"
 
 /*
 	TimeTaker
@@ -29,7 +30,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 class TimeTaker
 {
 public:
-	TimeTaker(const std::string &name, u64 *result=nullptr,
+	TimeTaker(const std::string &name, u64 *result=NULL,
 		TimePrecision prec=PRECISION_MILLI);
 
 	~TimeTaker()
@@ -44,7 +45,10 @@ public:
 private:
 	std::string m_name;
 	u64 m_time1;
-	bool m_running = true;
+	bool m_running;
 	TimePrecision m_precision;
-	u64 *m_result = nullptr;
+	u64 *m_result;
 };
+
+#endif
+

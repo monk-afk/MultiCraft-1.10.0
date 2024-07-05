@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef L_AREA_STORE_H_
+#define L_AREA_STORE_H_
 
 #include "lua_api/l_base.h"
 
@@ -48,7 +49,7 @@ private:
 	static int l_from_file(lua_State *L);
 
 public:
-	AreaStore *as = nullptr;
+	AreaStore *as;
 
 	LuaAreaStore();
 	LuaAreaStore(const std::string &type);
@@ -62,3 +63,5 @@ public:
 
 	static void Register(lua_State *L);
 };
+
+#endif // L_AREA_STORE_H_

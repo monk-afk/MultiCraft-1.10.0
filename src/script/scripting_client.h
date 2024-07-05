@@ -18,30 +18,29 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef CLIENT_SCRIPTING_H_
+#define CLIENT_SCRIPTING_H_
 
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_client.h"
-#include "cpp_api/s_modchannels.h"
 #include "cpp_api/s_security.h"
+#include "util/basic_macros.h"
 
 class Client;
 class LocalPlayer;
 class Camera;
-class Minimap;
-
 class ClientScripting:
 	virtual public ScriptApiBase,
 	public ScriptApiSecurity,
-	public ScriptApiClient,
-	public ScriptApiModChannels
+	public ScriptApiClient
 {
 public:
 	ClientScripting(Client *client);
 	void on_client_ready(LocalPlayer *localplayer);
 	void on_camera_ready(Camera *camera);
-	void on_minimap_ready(Minimap *minimap);
 
 private:
 	virtual void InitializeModApi(lua_State *L, int top);
+	DISABLE_CLASS_COPY(ClientScripting);
 };
+#endif

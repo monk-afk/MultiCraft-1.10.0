@@ -27,29 +27,25 @@
  */
 
 // clang-format off
-
-#include <cstddef>
-
 #ifdef WIN32
 	#include <windows.h>
 	#include <wincrypt.h>
 #else
-	#include <ctime>
-
+	#include <time.h>
 #endif
 // clang-format on
 
-#include <cstdlib>
-#include <cstring>
-#include <cstdio>
-#include <cstdint>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
 
 #include <config.h>
 
 #if USE_SYSTEM_GMP
 	#include <gmp.h>
 #else
-	#include <mini-gmp.h>
+	#include "mini-gmp.h"
 #endif
 
 #include <util/sha2.h>
@@ -354,7 +350,7 @@ static size_t hash_length(SRP_HashAlgorithm alg)
 		case SRP_SHA384: return SHA384_DIGEST_LENGTH;
 		case SRP_SHA512: return SHA512_DIGEST_LENGTH;
 		*/
-		default: return 0;
+		default: return -1;
 	};
 }
 // clang-format on
@@ -422,7 +418,7 @@ static SRP_Result H_nn(
 }
 
 static SRP_Result H_ns(mpz_t result, SRP_HashAlgorithm alg, const unsigned char *n,
-	size_t len_n, const unsigned char *bytes, size_t len_bytes)
+	size_t len_n, const unsigned char *bytes, uint32_t len_bytes)
 {
 	unsigned char buff[SHA512_DIGEST_LENGTH];
 	size_t nbytes = len_n + len_bytes;
@@ -701,7 +697,7 @@ struct SRPVerifier *srp_verifier_new(SRP_HashAlgorithm alg,
 		goto cleanup_and_exit;
 	}
 
-	memcpy(ver->username, username, ulen);
+	memcpy((char *)ver->username, username, ulen);
 
 	ver->authenticated = 0;
 
@@ -866,7 +862,7 @@ err_exit:
 		mpz_clear(usr->a);
 		mpz_clear(usr->A);
 		mpz_clear(usr->S);
-		delete_ng(usr->ng);
+		if (usr->ng) delete_ng(usr->ng);
 		srp_free(usr->username);
 		srp_free(usr->username_verifier);
 		if (usr->password) {
@@ -1015,10 +1011,10 @@ void  srp_user_process_challenge(struct SRPUser *usr,
 			goto cleanup_and_exit;
 
 		*bytes_M = usr->M;
-		*len_M = hash_length(usr->hash_alg);
+		if (len_M) *len_M = hash_length(usr->hash_alg);
 	} else {
 		*bytes_M = NULL;
-		*len_M = 0;
+		if (len_M) *len_M = 0;
 	}
 
 cleanup_and_exit:

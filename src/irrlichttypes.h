@@ -50,16 +50,16 @@ namespace irr {
 #endif
 
 #if (IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR >= 9)
-namespace core {
-	template <typename T>
-	inline T roundingError();
+	namespace core {
+		template <typename T>
+		inline T roundingError();
 
-	template <>
-	inline s16 roundingError()
-	{
-		return 0;
+		template <>
+		inline s16 roundingError()
+		{
+			return 0;
+		}
 	}
-}
 #endif
 
 }

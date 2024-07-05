@@ -21,7 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include <string>
 #include "exceptions.h"
-#include "client/keycode.h"
+#include "keycode.h"
 
 class TestKeycode : public TestBase {
 public:

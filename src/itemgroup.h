@@ -17,12 +17,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef ITEMGROUP_HEADER
+#define ITEMGROUP_HEADER
 
 #include <string>
-#include <unordered_map>
+#include "util/cpp11_container.h"
 
-typedef std::unordered_map<std::string, int> ItemGroupList;
+typedef UNORDERED_MAP<std::string, int> ItemGroupList;
 
 static inline int itemgroup_get(const ItemGroupList &groups, const std::string &name)
 {
@@ -31,3 +32,5 @@ static inline int itemgroup_get(const ItemGroupList &groups, const std::string &
 		return 0;
 	return i->second;
 }
+
+#endif

@@ -18,28 +18,17 @@
 --------------------------------------------------------------------------------
 
 local function rename_modpack_formspec(dialogdata)
-	local retval =
-		btn_style("dlg_rename_modpack_confirm", "green") ..
-		"button[3,4.8;3,0.5;dlg_rename_modpack_confirm;"..
-				fgettext("Accept") .. "]" ..
-		btn_style("dlg_rename_modpack_cancel") ..
-		"button[6,4.8;3,0.5;dlg_rename_modpack_cancel;"..
-				fgettext("Cancel") .. "]"
 
-	local input_y = 2
-	if dialogdata.mod.is_name_explicit then
-		retval = retval .. "textarea[1,0.2;10,2;;;" ..
-				fgettext("This modpack has an explicit name given in its modpack.conf " ..
-						"which will override any renaming here.") .. "]"
-		input_y = 2.5
-	end
-	retval = retval ..
-		"formspec_version[3]" ..
-		"image[2.5," .. input_y - 0.47 .. ";8.55,0.84;" ..
-		defaulttexturedir_esc .. "field_bg.png;32]" ..
-		"style[te_modpack_name;border=false;bgcolor=transparent]" ..
-		"field[2.85," .. input_y .. ";6.9,0.5;te_modpack_name;" ..
-		fgettext("Rename Modpack:") .. ";" .. dialogdata.mod.dir_name .. "]"
+	dialogdata.mod = modmgr.global_mods:get_list()[dialogdata.selected]
+
+	local retval =
+		"size[11.5,4.5,true]" ..
+		"field[2.5,2;7,0.5;te_modpack_name;".. fgettext("Rename Modpack:") .. ";" ..
+		dialogdata.mod.name .. "]" ..
+		"button[3.25,3.5;2.5,0.5;dlg_rename_modpack_confirm;"..
+				fgettext("Accept") .. "]" ..
+		"button[5.75,3.5;2.5,0.5;dlg_rename_modpack_cancel;"..
+				fgettext("Cancel") .. "]"
 
 	return retval
 end
@@ -47,12 +36,12 @@ end
 --------------------------------------------------------------------------------
 local function rename_modpack_buttonhandler(this, fields)
 	if fields["dlg_rename_modpack_confirm"] ~= nil then
-		local oldpath = this.data.mod.path
-		local targetpath = this.data.mod.parent_dir .. DIR_DELIM .. fields["te_modpack_name"]
-		os.rename(oldpath, targetpath)
-		pkgmgr.refresh_globals()
-		pkgmgr.selected_mod = pkgmgr.global_mods:get_current_index(
-			pkgmgr.global_mods:raw_index_by_uid(fields["te_modpack_name"]))
+		local oldpath = core.get_modpath() .. DIR_DELIM .. this.data.mod.name
+		local targetpath = core.get_modpath() .. DIR_DELIM .. fields["te_modpack_name"]
+		core.copy_dir(oldpath,targetpath,false)
+		modmgr.refresh_globals()
+		modmgr.selected_mod = modmgr.global_mods:get_current_index(
+			modmgr.global_mods:raw_index_by_uid(fields["te_modpack_name"]))
 
 		this:delete()
 		return true
@@ -67,12 +56,12 @@ local function rename_modpack_buttonhandler(this, fields)
 end
 
 --------------------------------------------------------------------------------
-function create_rename_modpack_dlg(modpack)
+function create_rename_modpack_dlg(selected_index)
 
 	local retval = dialog_create("dlg_delete_mod",
 					rename_modpack_formspec,
 					rename_modpack_buttonhandler,
-					nil, true)
-	retval.data.mod = modpack
+					nil)
+	retval.data.selected = selected_index
 	return retval
 end

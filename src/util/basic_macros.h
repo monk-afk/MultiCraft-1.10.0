@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef BASICMACROS_HEADER
+#define BASICMACROS_HEADER
 
 #define ARRLEN(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -32,9 +33,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // 'Foobar', add the macro DISABLE_CLASS_COPY(Foobar) as a private member.
 // Note this also disables copying for any classes derived from 'Foobar' as well
 // as classes having a 'Foobar' member.
-#define DISABLE_CLASS_COPY(C)        \
-	C(const C &) = delete;           \
-	C &operator=(const C &) = delete;
+#define DISABLE_CLASS_COPY(C) \
+	C(const C &);             \
+	C &operator=(const C &)
 
 #ifndef _MSC_VER
 	#define UNUSED_ATTRIBUTE __attribute__ ((unused))
@@ -56,3 +57,5 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define PP(x) "("<<(x).X<<","<<(x).Y<<","<<(x).Z<<")"
 
 #define PP2(x) "("<<(x).X<<","<<(x).Y<<")"
+
+#endif

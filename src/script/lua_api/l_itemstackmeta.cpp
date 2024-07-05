@@ -1,8 +1,6 @@
 /*
 Minetest
 Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
-Copyright (C) 2017-8 rubenwardy <rw@rubenwardy.com>
-Copyright (C) 2017 raymoo
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -46,26 +44,12 @@ void ItemStackMetaRef::clearMeta()
 	istack->metadata.clear();
 }
 
-void ItemStackMetaRef::reportMetadataChange(const std::string *name)
+void ItemStackMetaRef::reportMetadataChange()
 {
 	// TODO
 }
 
 // Exported functions
-int ItemStackMetaRef::l_set_tool_capabilities(lua_State *L)
-{
-	ItemStackMetaRef *metaref = checkobject(L, 1);
-	if (lua_isnoneornil(L, 2)) {
-		metaref->clearToolCapabilities();
-	} else if (lua_istable(L, 2)) {
-		ToolCapabilities caps = read_tool_capabilities(L, 2);
-		metaref->setToolCapabilities(caps);
-	} else {
-		luaL_typerror(L, 2, "table or nil");
-	}
-
-	return 0;
-}
 
 // garbage collector
 int ItemStackMetaRef::gc_object(lua_State *L) {
@@ -123,8 +107,6 @@ void ItemStackMetaRef::Register(lua_State *L)
 
 const char ItemStackMetaRef::className[] = "ItemStackMetaRef";
 const luaL_Reg ItemStackMetaRef::methods[] = {
-	luamethod(MetaDataRef, contains),
-	luamethod(MetaDataRef, get),
 	luamethod(MetaDataRef, get_string),
 	luamethod(MetaDataRef, set_string),
 	luamethod(MetaDataRef, get_int),
@@ -134,6 +116,5 @@ const luaL_Reg ItemStackMetaRef::methods[] = {
 	luamethod(MetaDataRef, to_table),
 	luamethod(MetaDataRef, from_table),
 	luamethod(MetaDataRef, equals),
-	luamethod(ItemStackMetaRef, set_tool_capabilities),
 	{0,0}
 };

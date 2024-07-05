@@ -17,25 +17,20 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
-
-#include "IrrCompileConfig.h"
+#ifndef BAN_HEADER
+#define BAN_HEADER
 
 #include "util/string.h"
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-#include "threading/sdl_thread.h"
-#else
 #include "threading/thread.h"
-#endif
+#include "threading/mutex.h"
 #include "exceptions.h"
 #include <map>
 #include <string>
-#include <mutex>
 
 class BanManager
 {
 public:
-	BanManager(const std::string &banfilepath);
+	BanManager(const std::string &bannfilepath);
 	~BanManager();
 	void load();
 	void save();
@@ -48,8 +43,10 @@ public:
 	bool isModified();
 
 private:
-	std::mutex m_mutex;
-	std::string m_banfilepath = "";
+	Mutex m_mutex;
+	std::string m_banfilepath;
 	StringMap m_ips;
-	bool m_modified = false;
+	bool m_modified;
 };
+
+#endif

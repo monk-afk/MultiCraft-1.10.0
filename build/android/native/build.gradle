@@ -1,0 +1,89 @@
+apply plugin: 'com.android.library'
+apply plugin: 'de.undercouch.download'
+
+android {
+	compileSdkVersion 29
+	buildToolsVersion '29.0.3'
+	ndkVersion '21.3.6528147'
+	defaultConfig {
+		minSdkVersion 16
+		targetSdkVersion 29
+		externalNativeBuild {
+			ndkBuild {
+				arguments '-j' + Runtime.getRuntime().availableProcessors()
+			}
+		}
+	}
+
+	externalNativeBuild {
+		ndkBuild {
+			path file('jni/Android.mk')
+		}
+	}
+
+	// supported architectures
+	splits {
+		abi {
+			enable true
+			reset()
+			include 'armeabi-v7a', 'arm64-v8a'//, 'x86'
+		}
+	}
+
+	buildTypes {
+		release {
+			externalNativeBuild {
+				ndkBuild {
+					arguments 'NDEBUG=1'
+				}
+			}
+		}
+	}
+}
+
+// get precompiled deps
+task downloadDeps(type: Download) {
+	src 'https://github.com/MultiCraft/deps/archive/master.zip'
+	dest new File(buildDir, 'deps.zip')
+	overwrite false
+}
+
+task getDeps(dependsOn: downloadDeps, type: Copy) {
+	def deps = file('deps')
+	def f = file("$buildDir/deps-master")
+
+	if (!f.exists()) {
+		from zipTree(downloadDeps.dest)
+		into buildDir
+	}
+
+	doLast {
+		file(f).renameTo(file(deps))
+	}
+}
+
+// get libiconv
+task downloadIconv(dependsOn: getDeps, type: Download) {
+	src 'https://github.com/MoNTE48/ndk_iconv/archive/mc.zip'
+	dest new File(buildDir, 'iconv.zip')
+	overwrite false
+}
+
+task getIconv(dependsOn: downloadIconv, type: Copy) {
+	def iconv = file('deps/Android/ndk_iconv')
+	def f = file("$buildDir/ndk_iconv-mc")
+
+	if (!iconv.exists() && !f.exists()) {
+		from zipTree(downloadIconv.dest)
+		into buildDir
+	}
+
+	doLast {
+		if (!iconv.exists()) {
+			file(f).renameTo(file(iconv))
+		}
+	}
+}
+
+preBuild.dependsOn getDeps
+preBuild.dependsOn getIconv

@@ -22,7 +22,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "common/c_converter.h"
 #include "log.h"
 #include "environment.h"
-#include "mapgen/mapgen.h"
+#include "mapgen.h"
 #include "lua_api/l_env.h"
 #include "server.h"
 
@@ -86,7 +86,7 @@ void ScriptApiEnv::player_event(ServerActiveObject *player, const std::string &t
 void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 {
 	SCRIPTAPI_PRECHECKHEADER
-	verbosestream << "ScriptApiEnv: Environment initialized" << std::endl;
+	verbosestream << "scriptapi_add_environment" << std::endl;
 	setEnv(env);
 
 	/*
@@ -108,7 +108,7 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 		int id = lua_tonumber(L, -2);
 		int current_abm = lua_gettop(L);
 
-		std::vector<std::string> trigger_contents;
+		std::set<std::string> trigger_contents;
 		lua_getfield(L, current_abm, "nodenames");
 		if (lua_istable(L, -1)) {
 			int table = lua_gettop(L);
@@ -116,16 +116,16 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 			while (lua_next(L, table)) {
 				// key at index -2 and value at index -1
 				luaL_checktype(L, -1, LUA_TSTRING);
-				trigger_contents.emplace_back(readParam<std::string>(L, -1));
+				trigger_contents.insert(lua_tostring(L, -1));
 				// removes value, keeps key for next iteration
 				lua_pop(L, 1);
 			}
 		} else if (lua_isstring(L, -1)) {
-			trigger_contents.emplace_back(readParam<std::string>(L, -1));
+			trigger_contents.insert(lua_tostring(L, -1));
 		}
 		lua_pop(L, 1);
 
-		std::vector<std::string> required_neighbors;
+		std::set<std::string> required_neighbors;
 		lua_getfield(L, current_abm, "neighbors");
 		if (lua_istable(L, -1)) {
 			int table = lua_gettop(L);
@@ -133,12 +133,12 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 			while (lua_next(L, table)) {
 				// key at index -2 and value at index -1
 				luaL_checktype(L, -1, LUA_TSTRING);
-				required_neighbors.emplace_back(readParam<std::string>(L, -1));
+				required_neighbors.insert(lua_tostring(L, -1));
 				// removes value, keeps key for next iteration
 				lua_pop(L, 1);
 			}
 		} else if (lua_isstring(L, -1)) {
-			required_neighbors.emplace_back(readParam<std::string>(L, -1));
+			required_neighbors.insert(lua_tostring(L, -1));
 		}
 		lua_pop(L, 1);
 
@@ -150,19 +150,9 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 
 		bool simple_catch_up = true;
 		getboolfield(L, current_abm, "catch_up", simple_catch_up);
-		
-		s16 min_y = INT16_MIN;
-		getintfield(L, current_abm, "min_y", min_y);
-		
-		s16 max_y = INT16_MAX;
-		getintfield(L, current_abm, "max_y", max_y);
-
-		lua_getfield(L, current_abm, "action");
-		luaL_checktype(L, current_abm + 1, LUA_TFUNCTION);
-		lua_pop(L, 1);
 
 		LuaABM *abm = new LuaABM(L, id, trigger_contents, required_neighbors,
-			trigger_interval, trigger_chance, simple_catch_up, min_y, max_y);
+			trigger_interval, trigger_chance, simple_catch_up);
 
 		env->addActiveBlockModifier(abm);
 
@@ -195,12 +185,12 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 			while (lua_next(L, table)) {
 				// key at index -2 and value at index -1
 				luaL_checktype(L, -1, LUA_TSTRING);
-				trigger_contents.insert(readParam<std::string>(L, -1));
+				trigger_contents.insert(lua_tostring(L, -1));
 				// removes value, keeps key for next iteration
 				lua_pop(L, 1);
 			}
 		} else if (lua_isstring(L, -1)) {
-			trigger_contents.insert(readParam<std::string>(L, -1));
+			trigger_contents.insert(lua_tostring(L, -1));
 		}
 		lua_pop(L, 1);
 
@@ -209,10 +199,6 @@ void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 
 		bool run_at_every_load = getboolfield_default(L, current_lbm,
 			"run_at_every_load", false);
-
-		lua_getfield(L, current_lbm, "action");
-		luaL_checktype(L, current_lbm + 1, LUA_TFUNCTION);
-		lua_pop(L, 1);
 
 		LuaLBM *lbm = new LuaLBM(L, id, trigger_contents, name,
 			run_at_every_load);

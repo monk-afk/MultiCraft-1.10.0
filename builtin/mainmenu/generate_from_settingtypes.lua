@@ -6,33 +6,19 @@ local sprintf = string.format
 local rep = string.rep
 
 local minetest_example_header = [[
-#    This file contains a list of all available settings and their default value for multicraft.conf
+#    This file contains a list of all available settings and their default value for minetest.conf
 
 #    By default, all the settings are commented and not functional.
 #    Uncomment settings by removing the preceding #.
 
-#    multicraft.conf is read by default from:
-#    ../multicraft.conf
-#    ../../multicraft.conf
+#    minetest.conf is read by default from:
+#    ../minetest.conf
+#    ../../minetest.conf
 #    Any other path can be chosen by passing the path as a parameter
-#    to the program, eg. "multicraft.exe --config ../multicraft.conf.example".
+#    to the program, eg. "minetest.exe --config ../minetest.conf.example".
 
 #    Further documentation:
 #    http://wiki.minetest.net/
-
-]]
-
-local group_format_template = [[
-# %s = {
-#    offset      = %s,
-#    scale       = %s,
-#    spread      = (%s, %s, %s),
-#    seed        = %s,
-#    octaves     = %s,
-#    persistence = %s,
-#    lacunarity  = %s,
-#    flags       = %s
-# }
 
 ]]
 
@@ -47,12 +33,6 @@ local function create_minetest_conf_example()
 				insert(result, "# " .. entry.name .. "\n\n")
 			end
 		else
-			local group_format = false
-			if entry.noise_params and entry.values then
-				if entry.type == "noise_params_2d" or entry.type == "noise_params_3d" then
-					group_format = true
-				end
-			end
 			if entry.comment ~= "" then
 				for _, comment_line in ipairs(entry.comment:split("\n", true)) do
 					insert(result, "#    " .. comment_line .. "\n")
@@ -65,25 +45,18 @@ local function create_minetest_conf_example()
 			if entry.max then
 				insert(result, " max: " .. entry.max)
 			end
-			if entry.values and entry.noise_params == nil then
+			if entry.values then
 				insert(result, " values: " .. concat(entry.values, ", "))
 			end
 			if entry.possible then
-				insert(result, " possible values: " .. concat(entry.possible, ", "))
+				insert(result, " possible values: " .. entry.possible:gsub(",", ", "))
 			end
 			insert(result, "\n")
-			if group_format == true then
-				insert(result, sprintf(group_format_template, entry.name, entry.values[1],
-						entry.values[2], entry.values[3], entry.values[4], entry.values[5],
-						entry.values[6], entry.values[7], entry.values[8], entry.values[9],
-						entry.values[10]))
-			else
-				local append
-				if entry.default ~= "" then
-					append = " " .. entry.default
-				end
-				insert(result, sprintf("# %s =%s\n\n", entry.name, append or ""))
+			local append
+			if entry.default ~= "" then
+				append = " " .. entry.default
 			end
+			insert(result, sprintf("# %s =%s\n\n", entry.name, append or ""))
 		end
 	end
 	return concat(result)
@@ -116,13 +89,10 @@ local function create_translation_file()
 	return concat(result, "\n")
 end
 
-local file = assert(io.open("multicraft.conf.example", "w"))
+local file = assert(io.open("minetest.conf.example", "w"))
 file:write(create_minetest_conf_example())
 file:close()
 
 file = assert(io.open("src/settings_translation_file.cpp", "w"))
--- If 'multicraft.conf.example' appears in the 'bin' folder, the line below may have to be
--- used instead. The file will also appear in the 'bin' folder.
---file = assert(io.open("settings_translation_file.cpp", "w"))
 file:write(create_translation_file())
 file:close()

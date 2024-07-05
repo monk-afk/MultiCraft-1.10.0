@@ -17,11 +17,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef SCRIPTING_MAINMENU_H_
+#define SCRIPTING_MAINMENU_H_
 
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_mainmenu.h"
 #include "cpp_api/s_async.h"
+#include "util/basic_macros.h"
 
 /*****************************************************************************/
 /* Scripting <-> Main Menu Interface                                         */
@@ -45,4 +47,8 @@ private:
 	static void registerLuaClasses(lua_State *L, int top);
 
 	AsyncEngine asyncEngine;
+	DISABLE_CLASS_COPY(MainMenuScripting);
 };
+
+
+#endif /* SCRIPTING_MAINMENU_H_ */

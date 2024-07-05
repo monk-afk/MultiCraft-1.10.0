@@ -19,16 +19,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "test.h"
 
-#include "IrrCompileConfig.h"
-
-#include <atomic>
-#ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
-#include "threading/sdl_semaphore.h"
-#include "threading/sdl_thread.h"
-#else
+#include "threading/atomic.h"
 #include "threading/semaphore.h"
 #include "threading/thread.h"
-#endif
 
 
 class TestThreading : public TestBase {
@@ -38,6 +31,7 @@ public:
 	void runTests(IGameDef *gamedef);
 
 	void testStartStopWait();
+	void testThreadKill();
 	void testAtomicSemaphoreThread();
 };
 
@@ -46,6 +40,7 @@ static TestThreading g_test_instance;
 void TestThreading::runTests(IGameDef *gamedef)
 {
 	TEST(testStartStopWait);
+	TEST(testThreadKill);
 	TEST(testAtomicSemaphoreThread);
 }
 
@@ -116,10 +111,33 @@ void TestThreading::testStartStopWait()
 }
 
 
+void TestThreading::testThreadKill()
+{
+	SimpleTestThread *thread = new SimpleTestThread(300);
+
+	UASSERT(thread->start() == true);
+
+	// kill()ing is quite violent, so let's make sure our victim is sleeping
+	// before we do this... so we don't corrupt the rest of the program's state
+	sleep_ms(100);
+	UASSERT(thread->kill() == true);
+
+	// The state of the thread object should be reset if all went well
+	UASSERT(thread->isRunning() == false);
+	UASSERT(thread->start() == true);
+	UASSERT(thread->stop() == true);
+	UASSERT(thread->wait() == true);
+
+	// kill() after already waiting should fail.
+	UASSERT(thread->kill() == false);
+
+	delete thread;
+}
+
 
 class AtomicTestThread : public Thread {
 public:
-	AtomicTestThread(std::atomic<u32> &v, Semaphore &trigger) :
+	AtomicTestThread(Atomic<u32> &v, Semaphore &trigger) :
 		Thread("AtomicTest"),
 		val(v),
 		trigger(trigger)
@@ -135,29 +153,29 @@ private:
 		return NULL;
 	}
 
-	std::atomic<u32> &val;
+	Atomic<u32> &val;
 	Semaphore &trigger;
 };
 
 
 void TestThreading::testAtomicSemaphoreThread()
 {
-	std::atomic<u32> val;
+	Atomic<u32> val;
 	val = 0;
 	Semaphore trigger;
 	static const u8 num_threads = 4;
 
 	AtomicTestThread *threads[num_threads];
-	for (auto &thread : threads) {
-		thread = new AtomicTestThread(val, trigger);
-		UASSERT(thread->start());
+	for (u8 i = 0; i < num_threads; ++i) {
+		threads[i] = new AtomicTestThread(val, trigger);
+		UASSERT(threads[i]->start());
 	}
 
 	trigger.post(num_threads);
 
-	for (AtomicTestThread *thread : threads) {
-		thread->wait();
-		delete thread;
+	for (u8 i = 0; i < num_threads; ++i) {
+		threads[i]->wait();
+		delete threads[i];
 	}
 
 	UASSERT(val == num_threads * 0x10000);

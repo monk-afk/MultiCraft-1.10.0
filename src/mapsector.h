@@ -17,7 +17,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#pragma once
+#ifndef MAPSECTOR_HEADER
+#define MAPSECTOR_HEADER
 
 #include "irrlichttypes.h"
 #include "irr_v2d.h"
@@ -43,6 +44,8 @@ public:
 	MapSector(Map *parent, v2s16 pos, IGameDef *gamedef);
 	virtual ~MapSector();
 
+	virtual u32 getId() const = 0;
+
 	void deleteBlocks();
 
 	v2s16 getPos()
@@ -62,11 +65,13 @@ public:
 
 	bool empty() const { return m_blocks.empty(); }
 
-	int size() const { return m_blocks.size(); }
+	// Always false at the moment, because sector contains no metadata.
+	bool differs_from_disk;
+
 protected:
 
 	// The pile of MapBlocks
-	std::unordered_map<s16, MapBlock*> m_blocks;
+	UNORDERED_MAP<s16, MapBlock*> m_blocks;
 
 	Map *m_parent;
 	// Position on parent (in MapBlock widths)
@@ -75,8 +80,8 @@ protected:
 	IGameDef *m_gamedef;
 
 	// Last-used block is cached here for quicker access.
-	// Be sure to set this to nullptr when the cached block is deleted
-	MapBlock *m_block_cache = nullptr;
+	// Be sure to set this to NULL when the cached block is deleted
+	MapBlock *m_block_cache;
 	s16 m_block_cache_y;
 
 	/*
@@ -85,3 +90,51 @@ protected:
 	MapBlock *getBlockBuffered(s16 y);
 
 };
+
+class ServerMapSector : public MapSector
+{
+public:
+	ServerMapSector(Map *parent, v2s16 pos, IGameDef *gamedef);
+	~ServerMapSector();
+
+	u32 getId() const
+	{
+		return MAPSECTOR_SERVER;
+	}
+
+	/*
+		These functions handle metadata.
+		They do not handle blocks.
+	*/
+
+	void serialize(std::ostream &os, u8 version);
+
+	static ServerMapSector* deSerialize(
+			std::istream &is,
+			Map *parent,
+			v2s16 p2d,
+			std::map<v2s16, MapSector*> & sectors,
+			IGameDef *gamedef
+		);
+
+private:
+};
+
+#ifndef SERVER
+class ClientMapSector : public MapSector
+{
+public:
+	ClientMapSector(Map *parent, v2s16 pos, IGameDef *gamedef);
+	~ClientMapSector();
+
+	u32 getId() const
+	{
+		return MAPSECTOR_CLIENT;
+	}
+
+private:
+};
+#endif
+
+#endif
+

@@ -81,7 +81,10 @@ bool ScriptApiItem::item_OnPlace(ItemStack &item,
 		try {
 			item = read_item(L, -1, getServer()->idef());
 		} catch (LuaError &e) {
-			throw LuaError(std::string(e.what()) + ". item=" + item.name);
+		//	throw LuaError(std::string(e.what()) + ". item=" + item.name);
+			errorstream << "ServerError: AsyncErr: ServerThread::run Lua: Expecting itemstack, itemstring, table or nil. item_OnPlace item="
+				    << item.name << std::endl;
+			return false;
 		}
 	}
 	lua_pop(L, 2);  // Pop item and error handler
@@ -115,18 +118,19 @@ bool ScriptApiItem::item_OnUse(ItemStack &item,
 	return true;
 }
 
-bool ScriptApiItem::item_OnSecondaryUse(ItemStack &item,
-		ServerActiveObject *user, const PointedThing &pointed)
+bool ScriptApiItem::item_OnSecondaryUse(ItemStack &item, ServerActiveObject *user)
 {
 	SCRIPTAPI_PRECHECKHEADER
-
+	
 	int error_handler = PUSH_ERROR_HANDLER(L);
-
+	
 	if (!getItemCallback(item.name.c_str(), "on_secondary_use"))
 		return false;
-
+	
 	LuaItemStack::create(L, item);
 	objectrefGetOrCreate(L, user);
+	PointedThing pointed;
+	pointed.type = POINTEDTHING_NOTHING;
 	pushPointedThing(pointed);
 	PCALL_RES(lua_pcall(L, 3, 1, error_handler));
 	if (!lua_isnil(L, -1)) {
@@ -176,7 +180,7 @@ bool ScriptApiItem::item_CraftPredict(ItemStack &item, ServerActiveObject *user,
 		const InventoryList *old_craft_grid, const InventoryLocation &craft_inv)
 {
 	SCRIPTAPI_PRECHECKHEADER
-	sanity_check(old_craft_grid);
+
 	int error_handler = PUSH_ERROR_HANDLER(L);
 
 	lua_getglobal(L, "core");
@@ -244,9 +248,7 @@ bool ScriptApiItem::getItemCallback(const char *name, const char *callbackname,
 	// Should be a function or nil
 	if (lua_type(L, -1) == LUA_TFUNCTION) {
 		return true;
-	}
-
-	if (!lua_isnil(L, -1)) {
+	} else if (!lua_isnil(L, -1)) {
 		errorstream << "Item \"" << name << "\" callback \""
 			<< callbackname << "\" is not a function" << std::endl;
 	}
@@ -254,10 +256,10 @@ bool ScriptApiItem::getItemCallback(const char *name, const char *callbackname,
 	return false;
 }
 
-void ScriptApiItem::pushPointedThing(const PointedThing &pointed, bool hitpoint)
+void ScriptApiItem::pushPointedThing(const PointedThing& pointed)
 {
 	lua_State* L = getStack();
 
-	push_pointed_thing(L, pointed, false, hitpoint);
+	push_pointed_thing(L, pointed);
 }
 
